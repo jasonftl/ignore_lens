@@ -5,6 +5,7 @@ Highlights unused patterns in your .ignore files - quickly spot lines that don't
 ## Features
 
 - **Line Decorations**: Redundant patterns (that don't match any files) are highlighted in red.
+- **Match Counts**: Shows the number of matched files after each pattern in italics, colour-coded to match the line.
 - **Real-time Updates**: Decorations update automatically when you edit the file or when files are added/removed from the workspace.
 
 ## How It Works
@@ -27,6 +28,7 @@ To use IgnoreLens with any file, change its language mode to `ignore` by clickin
 |---------|-------------|---------|
 | `ignorelens.enabled` | Enable or disable IgnoreLens decorations | `true` |
 | `ignorelens.decorationStyle` | How to highlight redundant patterns: `none`, `background`, `text`, or `both` | `text` |
+| `ignorelens.showMatchCount` | Show the number of matched files after each pattern | `true` |
 | `ignorelens.scanDebounceMs` | Debounce delay in milliseconds before rescanning | `500` |
 
 ### Decoration Styles
@@ -44,7 +46,8 @@ You can customise the colours in your `settings.json`:
 {
   "workbench.colorCustomizations": {
     "ignorelens.noMatchForeground": "#f14c4c",
-    "ignorelens.noMatchBackground": "#4a1a1a40"
+    "ignorelens.noMatchBackground": "#4a1a1a40",
+    "ignorelens.matchCountForeground": "#6A9955"
   }
 }
 ```

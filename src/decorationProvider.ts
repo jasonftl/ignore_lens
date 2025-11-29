@@ -14,10 +14,12 @@ import { DecorationStyle } from './types';
  */
 export class DecorationProvider implements vscode.Disposable {
     private noMatchDecorationType: vscode.TextEditorDecorationType | undefined;
+    private matchCountDecorationType: vscode.TextEditorDecorationType | undefined;
     private updateTimeout: NodeJS.Timeout | undefined;
     private parser: IgnoreParser;
     private matcher: PatternMatcher;
     private currentStyle: DecorationStyle;
+    private showMatchCount: boolean;
 
     /**
      * Creates a new DecorationProvider.
@@ -28,6 +30,7 @@ export class DecorationProvider implements vscode.Disposable {
         this.parser = new IgnoreParser();
         this.matcher = new PatternMatcher();
         this.currentStyle = this.getDecorationStyle();
+        this.showMatchCount = this.getShowMatchCount();
 
         // Create initial decoration types
         this.createDecorationTypes();
@@ -51,12 +54,26 @@ export class DecorationProvider implements vscode.Disposable {
     }
 
     /**
+     * Gets the showMatchCount setting from configuration.
+     *
+     * @returns Whether to show match counts
+     */
+    private getShowMatchCount(): boolean {
+        const config = vscode.workspace.getConfiguration('ignorelens');
+        const showCount = config.get<boolean>('showMatchCount', true);
+        return showCount;
+    }
+
+    /**
      * Creates decoration types based on the current style setting.
      */
     private createDecorationTypes(): void {
-        // Dispose existing decoration type
+        // Dispose existing decoration types
         if (this.noMatchDecorationType) {
             this.noMatchDecorationType.dispose();
+        }
+        if (this.matchCountDecorationType) {
+            this.matchCountDecorationType.dispose();
         }
 
         const style = this.currentStyle;
@@ -64,22 +81,28 @@ export class DecorationProvider implements vscode.Disposable {
         // No decorations if style is 'none'
         if (style === 'none') {
             this.noMatchDecorationType = undefined;
-            return;
+        } else {
+            // Build decoration options based on style (only for no-match patterns)
+            const noMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
+
+            if (style === 'background' || style === 'both') {
+                noMatchOptions.backgroundColor = { id: 'ignorelens.noMatchBackground' };
+            }
+
+            if (style === 'text' || style === 'both') {
+                noMatchOptions.color = { id: 'ignorelens.noMatchForeground' };
+            }
+
+            // Create the decoration type
+            this.noMatchDecorationType = vscode.window.createTextEditorDecorationType(noMatchOptions);
         }
 
-        // Build decoration options based on style (only for no-match patterns)
-        const noMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
-
-        if (style === 'background' || style === 'both') {
-            noMatchOptions.backgroundColor = { id: 'ignorelens.noMatchBackground' };
+        // Create match count decoration type (renders count before line)
+        if (this.showMatchCount) {
+            this.matchCountDecorationType = vscode.window.createTextEditorDecorationType({});
+        } else {
+            this.matchCountDecorationType = undefined;
         }
-
-        if (style === 'text' || style === 'both') {
-            noMatchOptions.color = { id: 'ignorelens.noMatchForeground' };
-        }
-
-        // Create the decoration type
-        this.noMatchDecorationType = vscode.window.createTextEditorDecorationType(noMatchOptions);
     }
 
     /**
@@ -87,9 +110,20 @@ export class DecorationProvider implements vscode.Disposable {
      */
     public onConfigurationChanged(): void {
         const newStyle = this.getDecorationStyle();
+        const newShowMatchCount = this.getShowMatchCount();
+        let needsRecreate = false;
 
         if (newStyle !== this.currentStyle) {
             this.currentStyle = newStyle;
+            needsRecreate = true;
+        }
+
+        if (newShowMatchCount !== this.showMatchCount) {
+            this.showMatchCount = newShowMatchCount;
+            needsRecreate = true;
+        }
+
+        if (needsRecreate) {
             this.createDecorationTypes();
         }
     }
@@ -105,10 +139,13 @@ export class DecorationProvider implements vscode.Disposable {
         const config = vscode.workspace.getConfiguration('ignorelens');
         const enabled = config.get<boolean>('enabled', true);
 
-        // Clear decorations if disabled or style is 'none'
-        if (!enabled || this.currentStyle === 'none') {
+        // Clear decorations if disabled
+        if (!enabled) {
             if (this.noMatchDecorationType) {
                 editor.setDecorations(this.noMatchDecorationType, []);
+            }
+            if (this.matchCountDecorationType) {
+                editor.setDecorations(this.matchCountDecorationType, []);
             }
             return;
         }
@@ -118,13 +155,9 @@ export class DecorationProvider implements vscode.Disposable {
             return;
         }
 
-        // Ensure decoration type exists
-        if (!this.noMatchDecorationType) {
-            return;
-        }
-
         const document = editor.document;
         const noMatchDecorations: vscode.DecorationOptions[] = [];
+        const matchCountDecorations: vscode.DecorationOptions[] = [];
 
         // Get the workspace folder containing this ignore file
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
@@ -149,29 +182,81 @@ export class DecorationProvider implements vscode.Disposable {
                 .map(file => file.substring(prefix.length));
         }
 
-        // Process each line in the document
+        // First pass: find longest line (including comments) and collect pattern match counts
+        const lineData: Array<{ lineIndex: number; lineLength: number; matchCount: number }> = [];
+        let maxLineLength = 0;
+
+        // Find max line length across all lines (including comments)
+        for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
+            const line = document.lineAt(lineIndex);
+            const lineLength = line.text.length;
+
+            if (lineLength > maxLineLength) {
+                maxLineLength = lineLength;
+            }
+        }
+
+        // Collect pattern line data
         for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
             const line = document.lineAt(lineIndex);
             const parsedLine = this.parser.parseLine(line.text);
 
-            // Skip comments and blank lines
+            // Skip comments and blank lines (no count to show)
             if (parsedLine.type === 'comment' || parsedLine.type === 'blank') {
                 continue;
             }
 
             // Check pattern against workspace files
             const matchResult = this.matcher.findMatches(parsedLine.pattern, workspaceFiles);
+            const matchCount = matchResult.matchingFiles.length;
+            const lineLength = line.text.length;
+
+            lineData.push({ lineIndex, lineLength, matchCount });
+        }
+
+        // Second pass: create decorations with aligned counts
+        for (const data of lineData) {
+            const { lineIndex, lineLength, matchCount } = data;
+            const line = document.lineAt(lineIndex);
+
+            // Add match count decoration at end of line if enabled
+            if (this.showMatchCount && this.matchCountDecorationType) {
+                const range = line.range;
+                const countText = '(' + String(matchCount) + ')';
+                // Pad with non-breaking spaces to align all counts
+                const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
+                // Use red for 0 matches, green for >0
+                const countColour = matchCount === 0
+                    ? { id: 'ignorelens.noMatchForeground' }
+                    : { id: 'ignorelens.matchCountForeground' };
+                const countDecoration: vscode.DecorationOptions = {
+                    range: range,
+                    renderOptions: {
+                        after: {
+                            contentText: padding + countText,
+                            color: countColour,
+                            fontStyle: 'italic'
+                        }
+                    }
+                };
+                matchCountDecorations.push(countDecoration);
+            }
 
             // Only decorate patterns that don't match any files (redundant patterns)
-            if (matchResult.matchingFiles.length === 0) {
+            if (matchCount === 0 && this.noMatchDecorationType && this.currentStyle !== 'none') {
                 const range = line.range;
                 const decoration: vscode.DecorationOptions = { range };
                 noMatchDecorations.push(decoration);
             }
         }
 
-        // Apply decorations (only for no-match patterns)
-        editor.setDecorations(this.noMatchDecorationType, noMatchDecorations);
+        // Apply decorations
+        if (this.noMatchDecorationType) {
+            editor.setDecorations(this.noMatchDecorationType, noMatchDecorations);
+        }
+        if (this.matchCountDecorationType) {
+            editor.setDecorations(this.matchCountDecorationType, matchCountDecorations);
+        }
     }
 
     /**
@@ -205,6 +290,10 @@ export class DecorationProvider implements vscode.Disposable {
     public dispose(): void {
         if (this.noMatchDecorationType) {
             this.noMatchDecorationType.dispose();
+        }
+
+        if (this.matchCountDecorationType) {
+            this.matchCountDecorationType.dispose();
         }
 
         if (this.updateTimeout) {

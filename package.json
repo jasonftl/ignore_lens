@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights unused patterns in your .ignore files - quickly spot lines that don't match any files in your workspace",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -41,6 +41,15 @@
           "light": "#cd3131",
           "highContrast": "#f14c4c"
         }
+      },
+      {
+        "id": "ignorelens.matchCountForeground",
+        "description": "Text colour for match count numbers",
+        "defaults": {
+          "dark": "#6A9955",
+          "light": "#008000",
+          "highContrast": "#6A9955"
+        }
       }
     ],
     "configuration": {
@@ -67,6 +76,11 @@
           "type": "number",
           "default": 500,
           "description": "Debounce delay in milliseconds before rescanning after file changes"
+        },
+        "ignorelens.showMatchCount": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the number of matched files before each pattern"
         }
       }
     }
