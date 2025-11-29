@@ -81,6 +81,10 @@ Press `F5` in VS Code to launch the Extension Development Host.
 npm test
 ```
 
+## Acknowledgements
+
+This project was developed with assistance from [Claude Code](https://claude.ai/code) and [OpenAI Codex](https://openai.com/index/openai-codex/).
+
 ## Licence
 
 MIT License - Copyright (c) 2025 Jason Gordon

@@ -2,6 +2,7 @@
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { WorkspaceScanner } from './workspaceScanner';
 import { IgnoreParser } from './ignoreParser';
 import { PatternMatcher } from './patternMatcher';
@@ -126,15 +127,34 @@ export class DecorationProvider implements vscode.Disposable {
         const noMatchDecorations: vscode.DecorationOptions[] = [];
 
         // Get all workspace files
-        const workspaceFiles = await this.workspaceScanner.getAllFiles();
+        let workspaceFiles = await this.workspaceScanner.getAllFiles();
+
+        // Handle nested ignore files - make paths relative to the ignore file's directory
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (workspaceFolder) {
+            const ignoreFileDir = path.dirname(document.uri.fsPath);
+            const workspaceRoot = workspaceFolder.uri.fsPath;
+            const relativeDirPath = path.relative(workspaceRoot, ignoreFileDir);
+            const normalisedRelativeDir = relativeDirPath.split(path.sep).join('/');
+
+            // If ignore file is not at workspace root, filter and adjust paths
+            if (normalisedRelativeDir !== '') {
+                const prefix = normalisedRelativeDir + '/';
+                workspaceFiles = workspaceFiles
+                    .filter(file => file.startsWith(prefix))
+                    .map(file => file.substring(prefix.length));
+            }
+        }
 
         // Process each line in the document
         for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
             const line = document.lineAt(lineIndex);
             const parsedLine = this.parser.parseLine(line.text);
 
-            // Skip comments and blank lines
-            if (parsedLine.type === 'comment' || parsedLine.type === 'blank') {
+            // Skip comments, blank lines, and negation patterns
+            // Negations are context-dependent (depend on earlier patterns) so we can't
+            // accurately determine if they're useful without full file analysis
+            if (parsedLine.type === 'comment' || parsedLine.type === 'blank' || parsedLine.isNegation) {
                 continue;
             }
 

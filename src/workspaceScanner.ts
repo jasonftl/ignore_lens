@@ -35,8 +35,9 @@ export class WorkspaceScanner implements vscode.Disposable {
 
         const allFiles: string[] = [];
 
-        // Use VS Code's findFiles API which respects files.exclude settings
-        const files = await vscode.workspace.findFiles('**/*', null);
+        // Use VS Code's findFiles API with empty exclude to include all files
+        // (including node_modules, .git, etc. that are normally excluded)
+        const files = await vscode.workspace.findFiles('**/*', '');
 
         for (const file of files) {
             // Convert to relative path from workspace root
