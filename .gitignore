@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+*.vsix
+
+# IDE
+.idea/
+.scripts/
+.vscode/
+
+# Environment
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Project-specific
+commit_notes.txt
+VERSION
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test output
+.vscode-test/
+coverage/

@@ -1,0 +1,102 @@
+{
+  "name": "ignore-lens",
+  "displayName": "IgnoreLens",
+  "description": "Visual feedback for ignore file patterns - see which patterns match files in your workspace",
+  "version": "0.1.0",
+  "publisher": "ignore-lens",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "gitignore",
+    "ignore",
+    "patterns",
+    "validation"
+  ],
+  "activationEvents": [
+    "onLanguage:ignore"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "colors": [
+      {
+        "id": "ignorelens.noMatchBackground",
+        "description": "Background colour for patterns that do not match any files",
+        "defaults": {
+          "dark": "#4a1a1a40",
+          "light": "#FFB6C140",
+          "highContrast": "#FF000030"
+        }
+      },
+      {
+        "id": "ignorelens.noMatchForeground",
+        "description": "Text colour for patterns that do not match any files",
+        "defaults": {
+          "dark": "#f14c4c",
+          "light": "#cd3131",
+          "highContrast": "#f14c4c"
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Ignore Lens",
+      "properties": {
+        "ignorelens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable Ignore Lens decorations"
+        },
+        "ignorelens.decorationStyle": {
+          "type": "string",
+          "enum": ["none", "background", "text", "both"],
+          "default": "text",
+          "enumDescriptions": [
+            "No decoration - patterns are not highlighted",
+            "Background colour only",
+            "Text colour only",
+            "Both background and text colour"
+          ],
+          "description": "How to highlight redundant patterns (patterns that don't match any files)"
+        },
+        "ignorelens.scanDebounceMs": {
+          "type": "number",
+          "default": 500,
+          "description": "Debounce delay in milliseconds before rescanning after file changes"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/test-electron": "^2.3.8",
+    "eslint": "^8.55.0",
+    "glob": "^13.0.0",
+    "mocha": "^11.7.5",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "ignore": "^5.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "license": "MIT"
+}
