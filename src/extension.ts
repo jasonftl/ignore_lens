@@ -16,7 +16,7 @@ let workspaceScanner: WorkspaceScanner | undefined;
  * @param context - The extension context
  */
 export function activate(context: vscode.ExtensionContext): void {
-    console.log('Ignore Lens extension is now active');
+    console.log('IgnoreLens extension is now active');
 
     // Initialise the workspace scanner
     workspaceScanner = new WorkspaceScanner();

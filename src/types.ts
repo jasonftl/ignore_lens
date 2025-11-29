@@ -1,5 +1,5 @@
 // Date: 29/11/2025
-// Common TypeScript interfaces and types for the Ignore Lens extension
+// Common TypeScript interfaces and types for the IgnoreLens extension
 
 /**
  * The type of line in an ignore file.
@@ -40,7 +40,7 @@ export interface MatchResult {
 }
 
 /**
- * Configuration options for the Ignore Lens extension.
+ * Configuration options for the IgnoreLens extension.
  */
 export interface IgnoreLensConfig {
     /** Whether the extension is enabled */
