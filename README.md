@@ -66,25 +66,6 @@ IgnoreLens supports standard ignore file pattern syntax:
 
 **Rule order context is not tracked.** Negation patterns (e.g., `!important.log`) are evaluated independently rather than in the context of preceding rules. This means a negation that "unignores" a file which was never ignored by an earlier pattern won't be flagged as redundant.
 
-## Development
-
-### Setup
-
-```bash
-npm install
-npm run compile
-```
-
-### Running the Extension
-
-Press `F5` in VS Code to launch the Extension Development Host.
-
-### Running Tests
-
-```bash
-npm test
-```
-
 ## Acknowledgements
 
 This project was developed with assistance from:
