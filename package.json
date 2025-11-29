@@ -4,6 +4,7 @@
   "description": "Visual feedback for ignore file patterns - see which patterns match files in your workspace",
   "version": "0.1.0",
   "publisher": "ignore-lens",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
