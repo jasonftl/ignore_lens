@@ -62,6 +62,10 @@ IgnoreLens supports standard ignore file pattern syntax:
 - `/` - Directory anchoring
 - `#` - Comments
 
+## Limitations
+
+**Rule order context is not tracked.** Negation patterns (e.g., `!important.log`) are evaluated independently rather than in the context of preceding rules. This means a negation that "unignores" a file which was never ignored by an earlier pattern won't be flagged as redundant.
+
 ## Development
 
 ### Setup
@@ -83,7 +87,9 @@ npm test
 
 ## Acknowledgements
 
-This project was developed with assistance from [Claude Code](https://claude.ai/code) and [OpenAI Codex](https://openai.com/index/openai-codex/).
+This project was developed with assistance from:
+- [Claude Code](https://claude.ai/code) (Opus 4.5)
+- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1-Codex-Max)
 
 ## Licence
 

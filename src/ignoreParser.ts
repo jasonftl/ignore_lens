@@ -16,24 +16,22 @@ export class IgnoreParser {
      * @returns ParsedLine with type and pattern information
      */
     public parseLine(line: string): ParsedLine {
-        // Handle trailing spaces: trim unless escaped with backslash
+        // Handle trailing whitespace: trim unless escaped with backslash
+        // Gitignore allows \<space> or \<tab> to preserve trailing whitespace
         let processedLine = line;
 
-        // Remove trailing spaces unless escaped
-        if (processedLine.endsWith('\\ ')) {
-            // Trailing space is escaped - keep it but remove the backslash
-            processedLine = processedLine.slice(0, -2) + ' ';
+        // Check for escaped trailing whitespace (backslash followed by space or tab at end)
+        const trailingEscapeMatch = processedLine.match(/\\([ \t])$/);
+        if (trailingEscapeMatch) {
+            // Remove backslash but keep the whitespace character
+            processedLine = processedLine.slice(0, -2) + trailingEscapeMatch[1];
         } else {
             // Trim trailing whitespace only
             processedLine = processedLine.replace(/\s+$/, '');
         }
 
-        // Trim leading spaces for comment/blank detection
-        // (practical UX - indented comments are common in ignore files)
-        const trimmedLine = processedLine.trimStart();
-
-        // Check for blank lines (after processing)
-        if (trimmedLine === '') {
+        // Check for blank lines (after trailing space processing)
+        if (processedLine === '') {
             const result: ParsedLine = {
                 type: 'blank' as LineType,
                 pattern: '',
@@ -44,9 +42,9 @@ export class IgnoreParser {
             return result;
         }
 
-        // Check for comments (lines starting with #, but not \#)
-        // Use trimmedLine to allow indented comments
-        if (trimmedLine.startsWith('#')) {
+        // Check for comments - only unescaped # at the very start of line
+        // (gitignore spec: comments must start with # at position 0)
+        if (processedLine.startsWith('#')) {
             const result: ParsedLine = {
                 type: 'comment' as LineType,
                 pattern: '',
@@ -58,13 +56,12 @@ export class IgnoreParser {
         }
 
         // Handle escaped # at start (literal # filename)
-        if (trimmedLine.startsWith('\\#')) {
-            processedLine = trimmedLine.substring(1);  // Remove the backslash
-        } else {
-            processedLine = trimmedLine;  // Use trimmed version for patterns
+        if (processedLine.startsWith('\\#')) {
+            processedLine = processedLine.substring(1);  // Remove the backslash, keep #
         }
 
         // Check for negation (lines starting with !, but not \!)
+        // Leading spaces before ! are significant - " !file" is a pattern for " !file"
         let isNegation = false;
         if (processedLine.startsWith('!')) {
             isNegation = true;

@@ -30,9 +30,12 @@ suite('IgnoreParser Test Suite', () => {
             assert.strictEqual(result.pattern, '');
         });
 
-        test('should identify indented comments', () => {
+        test('should treat indented hash as pattern (gitignore spec)', () => {
+            // Per gitignore spec, only # at position 0 is a comment
+            // "  # text" is a pattern matching a file named "  # text"
             const result = parser.parseLine('  # Indented comment');
-            assert.strictEqual(result.type, 'comment');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, '  # Indented comment');
         });
 
         test('should identify simple patterns', () => {

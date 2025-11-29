@@ -40,14 +40,14 @@ export class DecorationProvider implements vscode.Disposable {
      */
     private getDecorationStyle(): DecorationStyle {
         const config = vscode.workspace.getConfiguration('ignorelens');
-        const style = config.get<string>('decorationStyle', 'background');
+        const style = config.get<string>('decorationStyle', 'text');
 
         // Validate the style value
         if (style === 'none' || style === 'background' || style === 'text' || style === 'both') {
             return style;
         }
 
-        return 'background';
+        return 'text';
     }
 
     /**
@@ -126,24 +126,27 @@ export class DecorationProvider implements vscode.Disposable {
         const document = editor.document;
         const noMatchDecorations: vscode.DecorationOptions[] = [];
 
-        // Get all workspace files
-        let workspaceFiles = await this.workspaceScanner.getAllFiles();
+        // Get the workspace folder containing this ignore file
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (!workspaceFolder) {
+            return;
+        }
+
+        // Get files only from this workspace folder (not other roots in multi-root workspace)
+        let workspaceFiles = await this.workspaceScanner.getFilesInFolder(workspaceFolder);
 
         // Handle nested ignore files - make paths relative to the ignore file's directory
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-        if (workspaceFolder) {
-            const ignoreFileDir = path.dirname(document.uri.fsPath);
-            const workspaceRoot = workspaceFolder.uri.fsPath;
-            const relativeDirPath = path.relative(workspaceRoot, ignoreFileDir);
-            const normalisedRelativeDir = relativeDirPath.split(path.sep).join('/');
+        const ignoreFileDir = path.dirname(document.uri.fsPath);
+        const workspaceRoot = workspaceFolder.uri.fsPath;
+        const relativeDirPath = path.relative(workspaceRoot, ignoreFileDir);
+        const normalisedRelativeDir = relativeDirPath.split(path.sep).join('/');
 
-            // If ignore file is not at workspace root, filter and adjust paths
-            if (normalisedRelativeDir !== '') {
-                const prefix = normalisedRelativeDir + '/';
-                workspaceFiles = workspaceFiles
-                    .filter(file => file.startsWith(prefix))
-                    .map(file => file.substring(prefix.length));
-            }
+        // If ignore file is not at workspace root, filter and adjust paths
+        if (normalisedRelativeDir !== '') {
+            const prefix = normalisedRelativeDir + '/';
+            workspaceFiles = workspaceFiles
+                .filter(file => file.startsWith(prefix))
+                .map(file => file.substring(prefix.length));
         }
 
         // Process each line in the document
@@ -151,10 +154,8 @@ export class DecorationProvider implements vscode.Disposable {
             const line = document.lineAt(lineIndex);
             const parsedLine = this.parser.parseLine(line.text);
 
-            // Skip comments, blank lines, and negation patterns
-            // Negations are context-dependent (depend on earlier patterns) so we can't
-            // accurately determine if they're useful without full file analysis
-            if (parsedLine.type === 'comment' || parsedLine.type === 'blank' || parsedLine.isNegation) {
+            // Skip comments and blank lines
+            if (parsedLine.type === 'comment' || parsedLine.type === 'blank') {
                 continue;
             }
 
