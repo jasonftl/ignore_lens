@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights unused patterns in your .ignore files - quickly spot lines that don't match any files in your workspace",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {

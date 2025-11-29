@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 29/11/2025
+
+### Changed
+- First pattern now shows descriptive label: `(5 matches)` instead of just `(5)`
+- Subsequent patterns continue to show just the number for cleaner display
+
 ## [0.2.0] - 29/11/2025
 
 ### Added

@@ -215,6 +215,7 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Second pass: create decorations with aligned counts
+        let isFirstPattern = true;
         for (const data of lineData) {
             const { lineIndex, lineLength, matchCount } = data;
             const line = document.lineAt(lineIndex);
@@ -222,7 +223,11 @@ export class DecorationProvider implements vscode.Disposable {
             // Add match count decoration at end of line if enabled
             if (this.showMatchCount && this.matchCountDecorationType) {
                 const range = line.range;
-                const countText = '(' + String(matchCount) + ')';
+                // First pattern shows "matches" label, rest just show number
+                const countText = isFirstPattern
+                    ? '(' + String(matchCount) + ' matches)'
+                    : '(' + String(matchCount) + ')';
+                isFirstPattern = false;
                 // Pad with non-breaking spaces to align all counts
                 const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
                 // Use red for 0 matches, green for >0
