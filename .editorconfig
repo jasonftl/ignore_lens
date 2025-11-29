@@ -13,14 +13,13 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-# Python files
-[*.py]
+# TypeScript files
+[*.ts]
 indent_size = 4
-max_line_length = 88
 
-# YAML files
-[*.{yml,yaml}]
-indent_size = 2
+# JavaScript files (compiled output)
+[*.js]
+indent_size = 4
 
 # JSON files
 [*.json]
@@ -31,14 +30,10 @@ indent_size = 2
 trim_trailing_whitespace = false
 max_line_length = off
 
-# TOML files
-[*.toml]
-indent_size = 4
-
 # Batch files (Windows)
 [*.bat]
 end_of_line = crlf
 
-# Makefiles
-[Makefile]
-indent_style = tab
+# Ignore files (gitignore, vscodeignore, editorconfig)
+[{.gitignore,.vscodeignore,.editorconfig}]
+indent_size = 4
