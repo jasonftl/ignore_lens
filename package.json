@@ -1,8 +1,8 @@
 {
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
-  "description": "Visual feedback for ignore file patterns - see which patterns match files in your workspace",
-  "version": "0.1.1",
+  "description": "Highlights unused patterns in your .ignore files - quickly spot lines that don't match any files in your workspace",
+  "version": "0.1.2",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
