@@ -1,6 +1,6 @@
 # IgnoreLens
 
-A VS Code extension that provides visual feedback for ignore file patterns - see which patterns match files in your workspace.
+Highlights unused patterns in your .ignore files - quickly spot lines that don't match any files in your workspace.
 
 ## Features
 
