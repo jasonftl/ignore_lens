@@ -1,11 +1,13 @@
 # IgnoreLens
 
-Highlights unused patterns in your .ignore files - quickly spot lines that don't match any files in your workspace.
+Highlights how many files each ignore line matches and flags those hitting zero for easy identification.
+
+![IgnoreLens screenshot](images/screenshot.png)
 
 ## Features
 
-- **Line Decorations**: Redundant patterns (that don't match any files) are highlighted in red.
 - **Match Counts**: Shows the number of matched files after each pattern in italics, colour-coded to match the line.
+- **Line Decorations**: Redundant patterns (that don't match any files) are highlighted in red.
 - **Real-time Updates**: Decorations update automatically when you edit the file or when files are added/removed from the workspace.
 
 ## How It Works

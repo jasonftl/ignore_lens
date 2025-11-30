@@ -34,6 +34,6 @@ max_line_length = off
 [*.bat]
 end_of_line = crlf
 
-# Ignore files (gitignore, vscodeignore, editorconfig)
-[{.gitignore,.vscodeignore,.editorconfig}]
+# Ignore files (gitignore, vscodeignore, npmignore, vercelignore)
+[{.gitignore,.vscodeignore,.npmignore,.vercelignore}]
 indent_size = 4
