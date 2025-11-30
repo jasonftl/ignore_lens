@@ -12,6 +12,8 @@ Highlights how many files each ignore line matches and flags those hitting zero 
 
 ## How It Works
 
+[View flow diagram](docs/flow.md)
+
 IgnoreLens works with any file that uses VS Code's `ignore` language type. It analyses each line and checks whether the pattern matches any files in your current workspace:
 
 - **Red**: The pattern doesn't match any files (redundant)
