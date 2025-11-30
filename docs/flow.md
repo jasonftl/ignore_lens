@@ -12,6 +12,7 @@ flowchart TD
         N["Triggers on:<br>• file load<br>• workspace file change<br>• 'ignore' file edit"]
     end
 
+
     D -->|1. parses lines| E["IgnoreParser.parseLine()"]
     D -->|2. matches patterns| F["PatternMatcher.findMatches()"]
     D -->|3. applies| G["editor.setDecorations()"]
