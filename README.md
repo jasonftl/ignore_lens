@@ -69,6 +69,10 @@ IgnoreLens supports standard ignore file pattern syntax:
 - `/` - Directory anchoring
 - `#` - Comments
 
+## Troubleshooting
+
+If match counts aren't showing, settings are missing, or the extension behaves unexpectedly, try uninstalling and reinstalling. VS Code can sometimes get into a state where an updated extension doesn't fully load. A clean reinstall usually fixes it.
+
 ## Limitations
 
 **Rule order context is not tracked.** Negation patterns (e.g., `!important.log`) are evaluated independently rather than in the context of preceding rules. This means a negation that "unignores" a file which was never ignored by an earlier pattern won't be flagged as redundant.
