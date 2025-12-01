@@ -1,8 +1,9 @@
-// Date: 29/11/2025
+// Date: 01/12/2025
 // Scans workspace files and maintains a cached file list for pattern matching
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { getLogger } from './logger';
 
 /**
  * Scanner for workspace files.
@@ -20,13 +21,16 @@ export class WorkspaceScanner implements vscode.Disposable {
      * @returns Array of relative file paths
      */
     public async getFilesInFolder(folder: vscode.WorkspaceFolder): Promise<string[]> {
+        const logger = getLogger();
+        const startTime = Date.now();
         const allFiles: string[] = [];
 
-        // Use VS Code's findFiles API with empty exclude to include all files
+        // Use VS Code's findFiles API with null exclude to include all files
         // (including node_modules, .git, etc. that are normally excluded)
+        // Note: empty string '' has undocumented behaviour; null explicitly disables excludes
         // Scope to specific folder using RelativePattern
         const pattern = new vscode.RelativePattern(folder, '**/*');
-        const files = await vscode.workspace.findFiles(pattern, '');
+        const files = await vscode.workspace.findFiles(pattern, null);
 
         for (const file of files) {
             const relativePath = path.relative(folder.uri.fsPath, file.fsPath);
@@ -52,6 +56,8 @@ export class WorkspaceScanner implements vscode.Disposable {
         }
 
         const allPaths = [...allFiles, ...Array.from(directories)];
+        const duration = Date.now() - startTime;
+        logger.logTiming('Workspace scan: ' + allPaths.length + ' files', duration);
         return allPaths;
     }
 
@@ -63,10 +69,15 @@ export class WorkspaceScanner implements vscode.Disposable {
      * @returns Array of relative file paths
      */
     public async getAllFiles(): Promise<string[]> {
+        const logger = getLogger();
+
         // Return cached files if cache is valid
         if (this.cachedFiles !== null && !this.cacheInvalidated) {
+            logger.log('Cache hit - using cached file list');
             return this.cachedFiles;
         }
+
+        logger.log('Cache miss - rescanning workspace');
 
         const workspaceFolders = vscode.workspace.workspaceFolders;
 
@@ -79,9 +90,10 @@ export class WorkspaceScanner implements vscode.Disposable {
 
         const allFiles: string[] = [];
 
-        // Use VS Code's findFiles API with empty exclude to include all files
+        // Use VS Code's findFiles API with null exclude to include all files
         // (including node_modules, .git, etc. that are normally excluded)
-        const files = await vscode.workspace.findFiles('**/*', '');
+        // Note: empty string '' has undocumented behaviour; null explicitly disables excludes
+        const files = await vscode.workspace.findFiles('**/*', null);
 
         for (const file of files) {
             // Convert to relative path from workspace root

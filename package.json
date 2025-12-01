@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -81,6 +81,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the number of matched files before each pattern"
+        },
+        "ignorelens.debug": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable debug logging to the Output panel"
         }
       }
     }

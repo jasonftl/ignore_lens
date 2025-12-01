@@ -1,9 +1,10 @@
-// Date: 29/11/2025
+// Date: 01/12/2025
 // Main extension entry point - handles activation and coordinates components
 
 import * as vscode from 'vscode';
 import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
+import { getLogger, disposeLogger } from './logger';
 
 // Module-level references to components
 let decorationProvider: DecorationProvider | undefined;
@@ -16,7 +17,8 @@ let workspaceScanner: WorkspaceScanner | undefined;
  * @param context - The extension context
  */
 export function activate(context: vscode.ExtensionContext): void {
-    console.log('IgnoreLens extension is now active');
+    const logger = getLogger();
+    logger.log('IgnoreLens extension activated');
 
     // Initialise the workspace scanner
     workspaceScanner = new WorkspaceScanner();
@@ -26,8 +28,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register for active editor changes
     const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor && decorationProvider) {
-            decorationProvider.updateDecorations(editor);
+        if (editor && editor.document.languageId === 'ignore' && decorationProvider) {
+            decorationProvider.triggerUpdateDecorations(editor, false, 'editor switch');
         }
     });
     context.subscriptions.push(editorChangeDisposable);
@@ -35,8 +37,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register for document changes (with debounce)
     const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(event => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && event.document === editor.document && decorationProvider) {
-            decorationProvider.triggerUpdateDecorations(editor, true);
+        if (editor && event.document === editor.document && event.document.languageId === 'ignore' && decorationProvider) {
+            decorationProvider.triggerUpdateDecorations(editor, true, 'ignore file edit');
         }
     });
     context.subscriptions.push(documentChangeDisposable);
@@ -44,8 +46,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register for document open events (also fires on language mode change)
     const documentOpenDisposable = vscode.workspace.onDidOpenTextDocument(document => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document === document && decorationProvider) {
-            decorationProvider.updateDecorations(editor);
+        if (editor && editor.document === document && document.languageId === 'ignore' && decorationProvider) {
+            decorationProvider.triggerUpdateDecorations(editor, false, 'document open');
         }
     });
     context.subscriptions.push(documentOpenDisposable);
@@ -55,19 +57,21 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(fileWatcher);
 
     // Invalidate cache and update decorations when files are created or deleted
-    const createDisposable = fileWatcher.onDidCreate(() => {
+    const createDisposable = fileWatcher.onDidCreate((uri) => {
+        logger.log('Cache invalidated: file created - ' + uri.fsPath);
         if (workspaceScanner) {
             workspaceScanner.invalidateCache();
         }
-        refreshActiveEditor();
+        refreshActiveEditor('file created');
     });
     context.subscriptions.push(createDisposable);
 
-    const deleteDisposable = fileWatcher.onDidDelete(() => {
+    const deleteDisposable = fileWatcher.onDidDelete((uri) => {
+        logger.log('Cache invalidated: file deleted - ' + uri.fsPath);
         if (workspaceScanner) {
             workspaceScanner.invalidateCache();
         }
-        refreshActiveEditor();
+        refreshActiveEditor('file deleted');
     });
     context.subscriptions.push(deleteDisposable);
 
@@ -78,24 +82,26 @@ export function activate(context: vscode.ExtensionContext): void {
             if (decorationProvider) {
                 decorationProvider.onConfigurationChanged();
             }
-            refreshActiveEditor();
+            refreshActiveEditor('config change');
         }
     });
     context.subscriptions.push(configDisposable);
 
     // Initial decoration update for the active editor
-    if (vscode.window.activeTextEditor) {
+    if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.languageId === 'ignore') {
         decorationProvider.updateDecorations(vscode.window.activeTextEditor);
     }
 }
 
 /**
  * Refreshes decorations for the active editor if it's an ignore file.
+ *
+ * @param reason - Optional reason for the refresh (for logging)
  */
-function refreshActiveEditor(): void {
+function refreshActiveEditor(reason?: string): void {
     const editor = vscode.window.activeTextEditor;
-    if (editor && decorationProvider) {
-        decorationProvider.triggerUpdateDecorations(editor, true);
+    if (editor && editor.document.languageId === 'ignore' && decorationProvider) {
+        decorationProvider.triggerUpdateDecorations(editor, true, reason);
     }
 }
 
@@ -113,4 +119,7 @@ export function deactivate(): void {
         workspaceScanner.dispose();
         workspaceScanner = undefined;
     }
+
+    // Dispose the logger
+    disposeLogger();
 }

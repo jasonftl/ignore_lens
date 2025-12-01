@@ -34,6 +34,7 @@ To use IgnoreLens with any file, change its language mode to `ignore` by clickin
 | `ignorelens.decorationStyle` | How to highlight redundant patterns: `none`, `background`, `text`, or `both` | `text` |
 | `ignorelens.showMatchCount` | Show the number of matched files after each pattern | `true` |
 | `ignorelens.scanDebounceMs` | Debounce delay in milliseconds before rescanning | `500` |
+| `ignorelens.debug` | Enable debug logging to the Output panel | `false` |
 
 ### Decoration Styles
 
@@ -76,6 +77,8 @@ If match counts aren't showing, settings are missing, or the extension behaves u
 ## Limitations
 
 **Rule order context is not tracked.** Negation patterns (e.g., `!important.log`) are evaluated independently rather than in the context of preceding rules. This means a negation that "unignores" a file which was never ignored by an earlier pattern won't be flagged as redundant.
+
+**Empty directories are not detected.** Directories are discovered by scanning files, so patterns targeting empty directories (e.g., `empty-folder/`) will always show zero matches even if the directory exists.
 
 ## Acknowledgements
 
