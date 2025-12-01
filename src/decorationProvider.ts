@@ -213,6 +213,7 @@ export class DecorationProvider implements vscode.Disposable {
         const logger = getLogger();
         const patternStartTime = Date.now();
         let patternCount = 0;
+        const ignoredFiles = new Set<string>();
 
         for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
             const line = document.lineAt(lineIndex);
@@ -228,12 +229,30 @@ export class DecorationProvider implements vscode.Disposable {
             const matchCount = matchResult.matchingFiles.length;
             const lineLength = line.text.length;
 
+            // Track unique ignored files for summary (negations remove from set)
+            if (parsedLine.isNegation) {
+                for (const file of matchResult.matchingFiles) {
+                    ignoredFiles.delete(file);
+                }
+            } else {
+                for (const file of matchResult.matchingFiles) {
+                    ignoredFiles.add(file);
+                }
+            }
+
             lineData.push({ lineIndex, lineLength, matchCount });
             patternCount = patternCount + 1;
         }
 
         const patternDuration = Date.now() - patternStartTime;
         logger.logTiming('Pattern matching: ' + patternCount + ' patterns', patternDuration);
+
+        // Log approximate summary of ignored vs not ignored files
+        // Note: This is a simplified model - doesn't perfectly replicate gitignore ordering edge cases
+        const ignoredCount = ignoredFiles.size;
+        const notIgnoredCount = workspaceFiles.length - ignoredCount;
+        const ignoreFileName = path.basename(document.uri.fsPath);
+        logger.log('Summary (' + ignoreFileName + '): ~' + ignoredCount + ' matched, ~' + notIgnoredCount + ' unmatched (of ' + workspaceFiles.length + ' paths)');
 
         // Second pass: create decorations with aligned counts
         let isFirstPattern = true;

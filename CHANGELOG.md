@@ -10,7 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Debug logging feature: new `ignorelens.debug` setting to enable logging to the Output panel
 - Logs include workspace scan timing, pattern matching timing, cache hits/misses, and trigger events
+- Debug summary showing approximate matched/unmatched path counts per ignore file
 - Useful for troubleshooting performance or unexpected behaviour
+
+### Fixed
+- Workspace scanner now correctly includes `node_modules`, `.git`, and other normally-excluded folders
+- Race condition where stale decoration updates could overwrite newer results
+- Negation patterns now correctly reduce the matched count in debug summary
+
+### Changed
+- Documented empty directory limitation in README
 
 ## [0.2.2] - 30/11/2025
 
