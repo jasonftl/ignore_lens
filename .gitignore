@@ -9,7 +9,7 @@ dist/
 # IDE
 .idea/
 .scripts/
-.vscode/
+.vscode/*
 !.vscode/settings.json
 .vscodeignore
 

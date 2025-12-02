@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1] - 02/12/2025
+## [0.4.2] - 02/12/2025
 
 ### Changed
 - Match counts now use compact three-column display with Unicode symbols:
@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Debug output now shows accurate counts matching the overlay (removed ~ approximation)
 - Debug summary includes total files, ignored count, shadowed, not in set, and blocked counts
+- `dir/*` and `dir/**` patterns no longer block negations (only explicit `dir/` should block)
+  - Per Git docs: `dir/` ignores the directory itself (blocks negations)
+  - `dir/*` and `dir/**` only ignore contents (Git still traverses, negations work)
+- Negation patterns now work with directory names containing glob metacharacters (`*`, `?`, `[`, `]`)
+  - e.g., `[tmp]/` then `![tmp]/**` now correctly clears the blocked directory
 
 ### Removed
 - Removed `ignorelens.countMode` setting - cumulative set tracking is now the only mode
@@ -29,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New theme colour `ignorelens.negationForeground` for negation pattern counts (yellow)
 - Git-like directory traversal: negations cannot un-ignore files under ignored directories
-- Directory blocking applies to `dir/`, `dir/**`, and `dir/*` style patterns
-- Negation directory patterns (`!dir/`) remove directories from the blocked list
+- Directory blocking applies only to explicit `dir/` patterns (per Git documentation)
+- Negation directory patterns (`!dir/`, `!dir/**`, `!dir/*`) remove directories from the blocked list
 - Blocked negation tracking: shows `✗N` when negations are blocked by parent directories
 
 ### Changed

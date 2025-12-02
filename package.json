@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {

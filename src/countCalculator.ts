@@ -30,10 +30,17 @@ export function isUnderIgnoredDir(filePath: string, ignoredDirs: Set<string>): b
 
 /**
  * Extracts directory prefixes from matched files for a directory-style pattern.
- * Directory-style patterns include:
- * - Explicit directory patterns ending with / (e.g., "dist/")
- * - Patterns with ** that match directory contents (e.g., "dist/**")
- * - Patterns matching files in a directory (e.g., "dist/*.js")
+ * Only explicit directory patterns (ending with /) block negations.
+ *
+ * Per Git documentation: "It is not possible to re-include a file if a parent
+ * directory of that file is excluded."
+ *
+ * However, patterns like "dir/*" and "dir/**" do NOT exclude the directory itself,
+ * they only exclude the contents. Git still traverses the directory and can apply
+ * negation patterns to files within it.
+ *
+ * Only "dir/" (explicit directory pattern) excludes the directory itself, which
+ * prevents Git from traversing it and blocks all negations for files within.
  *
  * @param matchingFiles - Files that matched the pattern
  * @param pattern - The original pattern string
@@ -47,22 +54,15 @@ function extractDirectoryPrefixes(matchingFiles: string[], pattern: string, isDi
         return prefixes;
     }
 
-    // Explicit directory pattern (ends with /)
+    // Only explicit directory patterns (ends with /) block negations
+    // dir/* and dir/** do NOT block negations - they only ignore contents,
+    // Git still traverses the directory and can apply negation patterns
     if (isDirectory) {
         const firstFile = matchingFiles[0];
         const slashIndex = firstFile.indexOf('/');
         if (slashIndex !== -1) {
             prefixes.add(firstFile.substring(0, slashIndex + 1));
         }
-        return prefixes;
-    }
-
-    // Check for patterns that target directories: "dir/**", "dir/**/*", "dir/*.ext"
-    // These patterns imply the directory is being ignored
-    const dirGlobMatch = pattern.match(/^([^*?[\]!]+)\/(\*\*|\*)/);
-    if (dirGlobMatch) {
-        const dirPrefix = dirGlobMatch[1] + '/';
-        prefixes.add(dirPrefix);
         return prefixes;
     }
 
@@ -106,15 +106,16 @@ export function calculateAdvancedCount(
         // Check for explicit directory pattern (ends with /)
         if (patternWithoutNegation.endsWith('/')) {
             ignoredDirs.delete(patternWithoutNegation);
-        } else {
-            // Check for glob patterns that negate entire directories: "dir/**" or "dir/*"
-            // Only match if the pattern ends with /** or /* (negating all contents)
-            // "dir/*.js" should NOT match (only negates specific files)
-            const dirGlobMatch = patternWithoutNegation.match(/^([^*?[\]]+)\/(\*\*|\*)$/);
-            if (dirGlobMatch) {
-                const dirPrefix = dirGlobMatch[1] + '/';
-                ignoredDirs.delete(dirPrefix);
-            }
+        } else if (patternWithoutNegation.endsWith('/**')) {
+            // Glob pattern negating entire directory contents: "dir/**"
+            // Use suffix check instead of regex to handle dir names with metacharacters
+            const dirPrefix = patternWithoutNegation.slice(0, -2);  // Remove "**", keep trailing /
+            ignoredDirs.delete(dirPrefix);
+        } else if (patternWithoutNegation.endsWith('/*')) {
+            // Glob pattern negating immediate directory contents: "dir/*"
+            // "dir/*.js" won't match (doesn't end with exactly /*)
+            const dirPrefix = patternWithoutNegation.slice(0, -1);  // Remove "*", keep trailing /
+            ignoredDirs.delete(dirPrefix);
         }
     }
 

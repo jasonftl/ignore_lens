@@ -1,0 +1,13 @@
+{
+    "ignorelens.enabled": true,
+    "ignorelens.decorationStyle": "text",
+    "ignorelens.showMatchCount": true,
+    "ignorelens.scanDebounceMs": 500,
+    "ignorelens.debug": true,
+    "workbench.colorCustomizations": {
+        "ignorelens.noMatchForeground": "#f14c4c",
+        "ignorelens.noMatchBackground": "#4a1a1a40",
+        "ignorelens.matchCountForeground": "#6A9955",
+        "ignorelens.negationForeground": "#CCAA00"
+    }
+}

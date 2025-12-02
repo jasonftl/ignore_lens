@@ -97,7 +97,9 @@ suite('CountCalculator Test Suite', () => {
                 assert.ok(ignoredDirs.has('dist/'));
             });
 
-            test('should add directory prefix to ignoredDirs for dir/** patterns', () => {
+            test('should NOT add directory prefix to ignoredDirs for dir/** patterns', () => {
+                // Per Git docs: dir/** only ignores contents, not the directory itself
+                // Git still traverses the directory and can apply negation patterns
                 const matchingFiles = ['dist/bundle.js', 'dist/sub/index.js'];
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
@@ -105,10 +107,12 @@ suite('CountCalculator Test Suite', () => {
                 const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
 
                 assert.strictEqual(result.actionCount, 2);
-                assert.ok(ignoredDirs.has('dist/'));
+                assert.ok(!ignoredDirs.has('dist/'));  // Should NOT be in ignoredDirs
             });
 
-            test('should add directory prefix to ignoredDirs for dir/* patterns', () => {
+            test('should NOT add directory prefix to ignoredDirs for dir/* patterns', () => {
+                // dir/* only matches immediate contents, not the directory itself
+                // so negations should still be allowed for files under the directory
                 const matchingFiles = ['build/app.js', 'build/lib.js'];
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
@@ -116,7 +120,7 @@ suite('CountCalculator Test Suite', () => {
                 const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'build/*');
 
                 assert.strictEqual(result.actionCount, 2);
-                assert.ok(ignoredDirs.has('build/'));
+                assert.ok(!ignoredDirs.has('build/'));  // Should NOT be in ignoredDirs
             });
         });
 
@@ -319,37 +323,39 @@ suite('CountCalculator Test Suite', () => {
                 assert.ok(cumulativeSet.has('dist/important.js'));
             });
 
-            test('should block negation for files under dir/** pattern', () => {
-                // Simulates: dist/**, !dist/important.js
+            test('should allow negation after dir/** pattern (not blocked)', () => {
+                // Simulates: dist/**, !dist/sub/important.js
+                // Per Git docs: dir/** only ignores contents, not the directory itself
+                // Git still traverses the directory and can apply negation patterns
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                // Pattern 1: dist/** matches files - glob pattern adds dir to ignoredDirs
+                // Pattern 1: dist/** matches files but does NOT add to ignoredDirs
                 const distFiles = ['dist/bundle.js', 'dist/sub/important.js'];
                 const result1 = calculateAdvancedCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
-                assert.ok(ignoredDirs.has('dist/'));
+                assert.ok(!ignoredDirs.has('dist/'));  // NOT in ignoredDirs
 
-                // Pattern 2: !dist/sub/important.js - should be blocked by dist/**
+                // Pattern 2: !dist/sub/important.js - should NOT be blocked
                 const importantFiles = ['dist/sub/important.js'];
                 const result2 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/sub/important.js');
-                assert.strictEqual(result2.actionCount, 0);
-                assert.strictEqual(result2.blockedCount, 1);
-                assert.strictEqual(result2.setSize, 2);
+                assert.strictEqual(result2.actionCount, 1);  // Successfully removed
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.setSize, 1);
             });
 
-            test('should allow negation with !dir/** to clear ignoredDirs', () => {
-                // Simulates: dist/**, !dist/** (negating the whole directory with glob pattern)
+            test('should allow negation with !dir/** after dir/ to clear ignoredDirs', () => {
+                // Simulates: dist/, !dist/** (negating the whole directory with glob pattern)
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                // Pattern 1: dist/** matches files - glob pattern adds dir to ignoredDirs
+                // Pattern 1: dist/ matches files - explicit directory pattern adds to ignoredDirs
                 const distFiles = ['dist/bundle.js', 'dist/sub/important.js'];
-                const result1 = calculateAdvancedCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
+                const result1 = calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
-                assert.ok(ignoredDirs.has('dist/'));
+                assert.ok(ignoredDirs.has('dist/'));  // Only dir/ adds to ignoredDirs
 
                 // Pattern 2: !dist/** should clear dist/ from ignoredDirs and remove files
                 const result2 = calculateAdvancedCount(distFiles, true, false, cumulativeSet, ignoredDirs, '!dist/**');
@@ -359,22 +365,24 @@ suite('CountCalculator Test Suite', () => {
                 assert.strictEqual(result2.setSize, 0);
             });
 
-            test('should allow negation with !dir/* to clear ignoredDirs', () => {
-                // Simulates: dist/*, !dist/* (negating the directory with single glob)
+            test('should allow negation after dir/* pattern (not blocked)', () => {
+                // Simulates: dist/*, !dist/important.js
+                // dir/* does NOT block negations (only matches immediate contents)
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                // Pattern 1: dist/* matches files
-                const distFiles = ['dist/bundle.js', 'dist/index.js'];
+                // Pattern 1: dist/* matches files but does NOT add to ignoredDirs
+                const distFiles = ['dist/bundle.js', 'dist/important.js'];
                 const result1 = calculateAdvancedCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/*');
                 assert.strictEqual(result1.actionCount, 2);
-                assert.ok(ignoredDirs.has('dist/'));
+                assert.ok(!ignoredDirs.has('dist/'));  // NOT in ignoredDirs
 
-                // Pattern 2: !dist/* should clear dist/ from ignoredDirs
-                const result2 = calculateAdvancedCount(distFiles, true, false, cumulativeSet, ignoredDirs, '!dist/*');
-                assert.ok(!ignoredDirs.has('dist/'));
-                assert.strictEqual(result2.actionCount, 2);
-                assert.strictEqual(result2.blockedCount, 0);
+                // Pattern 2: !dist/important.js should NOT be blocked
+                const importantFiles = ['dist/important.js'];
+                const result2 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/important.js');
+                assert.strictEqual(result2.actionCount, 1);  // Successfully removed
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.setSize, 1);
             });
 
             test('should allow negation after negating directory', () => {
@@ -399,6 +407,26 @@ suite('CountCalculator Test Suite', () => {
                 const result3 = calculateAdvancedCount(secretFiles, false, false, cumulativeSet, ignoredDirs, 'dist/secret.js');
                 assert.strictEqual(result3.actionCount, 1);
                 assert.strictEqual(cumulativeSet.size, 1);
+            });
+
+            test('should handle directory names with glob metacharacters', () => {
+                // Simulates: [tmp]/, ![tmp]/** - directory name contains [ and ]
+                // Bug fix: regex previously excluded dir names with *, ?, [, ]
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern 1: [tmp]/ ignores the directory (name contains metacharacters)
+                const tmpFiles = ['[tmp]/file1.txt', '[tmp]/sub/file2.txt'];
+                calculateAdvancedCount(tmpFiles, false, true, cumulativeSet, ignoredDirs, '[tmp]/');
+                assert.ok(ignoredDirs.has('[tmp]/'));
+                assert.strictEqual(cumulativeSet.size, 2);
+
+                // Pattern 2: ![tmp]/** should clear [tmp]/ from ignoredDirs
+                const result2 = calculateAdvancedCount(tmpFiles, true, false, cumulativeSet, ignoredDirs, '![tmp]/**');
+                assert.ok(!ignoredDirs.has('[tmp]/'));  // Should be removed despite metacharacters
+                assert.strictEqual(result2.actionCount, 2);  // Files should be removed from set
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.setSize, 0);
             });
         });
     });

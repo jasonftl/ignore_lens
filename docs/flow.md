@@ -15,7 +15,8 @@ flowchart TD
 
     D -->|1. parses lines| E["IgnoreParser.parseLine()"]
     D -->|2. matches patterns| F["PatternMatcher.findMatches()"]
-    D -->|3. applies| G["editor.setDecorations()"]
+    D -->|3. calculates counts| H["countCalculator.calculateAdvancedCount()"]
+    D -->|4. applies| G["editor.setDecorations()"]
 ```
 
 ## Components
@@ -25,3 +26,4 @@ flowchart TD
 - **DecorationProvider** - Manages line decorations and match counts
 - **IgnoreParser** - Parses ignore file lines (patterns, comments, blanks)
 - **PatternMatcher** - Checks patterns against workspace files
+- **countCalculator** - Calculates set operations (tracks ignored files and blocked directories)
