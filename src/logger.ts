@@ -78,7 +78,7 @@ export class Logger {
      * @param ms - Duration in milliseconds
      */
     public logTiming(label: string, ms: number): void {
-        const message = label + ' in ' + ms + 'ms';
+        const message = label + ' (' + ms + 'ms)';
         this.log(message);
     }
 

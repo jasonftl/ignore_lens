@@ -5,23 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 02/12/2025
+
+### Changed
+- Match counts now use compact three-column display with Unicode symbols:
+  - `+N` added, `−N` removed, `(N)` set size, `≡N` already in set, `∅N` not in set, `✗N` blocked
+  - Columns are justified for alignment across all lines
+  - Zero counts are hidden for cleaner display
+- Shadowed patterns (`+0` with files already in set) now display in yellow instead of red
+- Shadowed patterns no longer have red line decoration (only truly redundant patterns)
+- Debug output timing format changed from "X in Yms" to "X (Yms)"
+
+### Fixed
+- Debug output now shows accurate counts matching the overlay (removed ~ approximation)
+- Debug summary includes total files, ignored count, shadowed, not in set, and blocked counts
+
+### Removed
+- Removed `ignorelens.countMode` setting - cumulative set tracking is now the only mode
+- Removed dead code: `calculateBasicCount` function and `BasicCountResult` interface
+
 ## [0.4.0] - 02/12/2025
 
 ### Added
-- New `ignorelens.countMode` setting with two modes:
-  - `basic` (default): Shows total files matching each pattern
-  - `advanced`: Tracks a cumulative set where normal patterns add and negation patterns remove
 - New theme colour `ignorelens.negationForeground` for negation pattern counts (yellow)
-- Git-like directory traversal in advanced mode: negations cannot un-ignore files under ignored directories
-- Directory blocking now applies to `dir/`, `dir/**`, and `dir/*` style patterns
-- Negation directory patterns (`!dir/`) now remove directories from the blocked list
-- Blocked negation display: shows all counts `(X removed; Y not in set; Z blocked by parent dir; set = W)` when applicable
+- Git-like directory traversal: negations cannot un-ignore files under ignored directories
+- Directory blocking applies to `dir/`, `dir/**`, and `dir/*` style patterns
+- Negation directory patterns (`!dir/`) remove directories from the blocked list
+- Blocked negation tracking: shows `✗N` when negations are blocked by parent directories
 
 ### Changed
-- Advanced mode display format shows full information:
-  - Normal patterns: `(X added to set; Y already in set; set = Z)`
-  - Negation patterns: `(X removed from set; Y not in set; set = Z)` or includes blocked count
-- Advanced mode uses single cumulative set (negations actually remove files)
+- Cumulative set tracking where normal patterns add and negation patterns remove files
 - Negation patterns always display in yellow, never marked redundant
 - Normal patterns marked redundant when actionCount is 0 (matches nothing or all already in set)
 - Workspace scanner now returns only files, not synthetic directory entries
@@ -29,8 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Directory entries no longer inflate match counts
-- Shadowed/duplicate patterns now correctly marked as redundant (red) in advanced mode
-- countMode fallback now correctly defaults to 'basic' instead of 'total'
+- Shadowed/duplicate patterns now correctly marked as redundant (red)
 - Trailing whitespace parsing now handles multiple escaped spaces correctly
 - Negating an empty directory now correctly removes it from ignoredDirs
 - Negation glob patterns (`!dir/**`, `!dir/*`) now correctly clear ignoredDirs

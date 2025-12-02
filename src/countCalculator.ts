@@ -1,15 +1,8 @@
 // Date: 02/12/2025
-// Calculates pattern match counts for basic and advanced modes
+// Calculates pattern match counts with cumulative set tracking
 
 /**
- * Result of calculating counts for a single pattern in basic mode.
- */
-export interface BasicCountResult {
-    matchCount: number;  // Total files matching this pattern
-}
-
-/**
- * Result of calculating counts for a single pattern in advanced mode.
+ * Result of calculating counts for a single pattern.
  */
 export interface AdvancedCountResult {
     actionCount: number;    // Files added (normal) or removed (negation)
@@ -159,16 +152,4 @@ export function calculateAdvancedCount(
     }
 
     return { actionCount, noActionCount, blockedCount, setSize: cumulativeSet.size };
-}
-
-/**
- * Calculates the basic count for a pattern (simple count of matches).
- *
- * @param matchingFiles - Files that match this pattern
- * @returns Object with matchCount (total matches)
- */
-export function calculateBasicCount(matchingFiles: string[]): BasicCountResult {
-    return {
-        matchCount: matchingFiles.length
-    };
 }

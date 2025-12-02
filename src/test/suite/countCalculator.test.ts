@@ -2,27 +2,9 @@
 // Unit tests for the count calculator functions
 
 import * as assert from 'assert';
-import { calculateAdvancedCount, calculateBasicCount, isUnderIgnoredDir } from '../../countCalculator';
+import { calculateAdvancedCount, isUnderIgnoredDir } from '../../countCalculator';
 
 suite('CountCalculator Test Suite', () => {
-
-    suite('calculateBasicCount', () => {
-        test('should return count of all matching files', () => {
-            const matchingFiles = ['file1.js', 'file2.js', 'file3.js'];
-
-            const result = calculateBasicCount(matchingFiles);
-
-            assert.strictEqual(result.matchCount, 3);
-        });
-
-        test('should return zero for empty matches', () => {
-            const matchingFiles: string[] = [];
-
-            const result = calculateBasicCount(matchingFiles);
-
-            assert.strictEqual(result.matchCount, 0);
-        });
-    });
 
     suite('isUnderIgnoredDir', () => {
         test('should return true for file under ignored directory', () => {
