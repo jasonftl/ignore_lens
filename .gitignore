@@ -5,6 +5,7 @@ node_modules/
 out/
 dist/
 *.vsix
+!ignore-lens-0.4.0.vsix
 
 # IDE
 .idea/
