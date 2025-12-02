@@ -11,9 +11,10 @@ A VS Code extension that shows how many files each ignore pattern matches and hi
 Each pattern displays a count showing its effect on the ignore set:
 
 ```
-node_modules/    +444        (444)
-*.js             +1    ≡22   (445)
-!src/            −0    ∅1 ✗10   (444)
+node_modules/    +444  (444)
+*.js             +1    (445)  ≡22
+!src/            −3    (442)
+!dist/file.js    −0    (442)  ∅2 ✗1
 ```
 
 | Symbol | Meaning |
