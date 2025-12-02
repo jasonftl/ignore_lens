@@ -1,4 +1,4 @@
-// Date: 01/12/2025
+// Date: 02/12/2025
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
@@ -8,6 +8,7 @@ import { IgnoreParser } from './ignoreParser';
 import { PatternMatcher } from './patternMatcher';
 import { DecorationStyle } from './types';
 import { getLogger } from './logger';
+import { calculateAdvancedCount, calculateBasicCount } from './countCalculator';
 
 /**
  * Provides line decorations for ignore files.
@@ -195,8 +196,21 @@ export class DecorationProvider implements vscode.Disposable {
                 .map(file => file.substring(prefix.length));
         }
 
+        // Get count mode setting
+        const countMode = config.get<string>('countMode', 'basic');
+
         // First pass: find longest line (including comments) and collect pattern match counts
-        const lineData: Array<{ lineIndex: number; lineLength: number; matchCount: number }> = [];
+        // For basic mode: matchCount = total files matching
+        // For advanced mode: actionCount = files added/removed, noActionCount = already in/not in set, blockedCount = blocked by parent dir, setSize = current set size
+        const lineData: Array<{
+            lineIndex: number;
+            lineLength: number;
+            actionCount: number;
+            noActionCount: number;
+            blockedCount: number;
+            setSize: number;
+            isNegation: boolean;
+        }> = [];
         let maxLineLength = 0;
 
         // Find max line length across all lines (including comments)
@@ -214,6 +228,10 @@ export class DecorationProvider implements vscode.Disposable {
         const patternStartTime = Date.now();
         let patternCount = 0;
         const ignoredFiles = new Set<string>();
+        // Single cumulative set for advanced mode
+        const cumulativeSet = new Set<string>();
+        // Track ignored directories to block negations for files under them
+        const ignoredDirs = new Set<string>();
 
         for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
             const line = document.lineAt(lineIndex);
@@ -226,8 +244,27 @@ export class DecorationProvider implements vscode.Disposable {
 
             // Check pattern against workspace files
             const matchResult = this.matcher.findMatches(parsedLine.pattern, workspaceFiles);
-            const matchCount = matchResult.matchingFiles.length;
             const lineLength = line.text.length;
+
+            // Calculate counts based on mode
+            let actionCount: number;
+            let noActionCount: number;
+            let blockedCount: number;
+            let setSize: number;
+
+            if (countMode === 'advanced') {
+                const advancedResult = calculateAdvancedCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern);
+                actionCount = advancedResult.actionCount;
+                noActionCount = advancedResult.noActionCount;
+                blockedCount = advancedResult.blockedCount;
+                setSize = advancedResult.setSize;
+            } else {
+                const basicResult = calculateBasicCount(matchResult.matchingFiles);
+                actionCount = basicResult.matchCount;
+                noActionCount = 0;
+                blockedCount = 0;
+                setSize = 0;
+            }
 
             // Track unique ignored files for summary (negations remove from set)
             if (parsedLine.isNegation) {
@@ -240,7 +277,7 @@ export class DecorationProvider implements vscode.Disposable {
                 }
             }
 
-            lineData.push({ lineIndex, lineLength, matchCount });
+            lineData.push({ lineIndex, lineLength, actionCount, noActionCount, blockedCount, setSize, isNegation: parsedLine.isNegation });
             patternCount = patternCount + 1;
         }
 
@@ -255,25 +292,51 @@ export class DecorationProvider implements vscode.Disposable {
         logger.log('Summary (' + ignoreFileName + '): ~' + ignoredCount + ' matched, ~' + notIgnoredCount + ' unmatched (of ' + workspaceFiles.length + ' paths)');
 
         // Second pass: create decorations with aligned counts
-        let isFirstPattern = true;
         for (const data of lineData) {
-            const { lineIndex, lineLength, matchCount } = data;
+            const { lineIndex, lineLength, actionCount, noActionCount, blockedCount, setSize, isNegation } = data;
             const line = document.lineAt(lineIndex);
 
             // Add match count decoration at end of line if enabled
             if (this.showMatchCount && this.matchCountDecorationType) {
                 const range = line.range;
-                // First pattern shows "matches" label, rest just show number
-                const countText = isFirstPattern
-                    ? '(' + String(matchCount) + ' matches)'
-                    : '(' + String(matchCount) + ')';
-                isFirstPattern = false;
+                let countText: string;
+                let countColour: { id: string };
+
+                if (countMode === 'advanced') {
+                    // Advanced mode: show full format always
+                    if (isNegation) {
+                        // Negation: show removed, not in set, blocked counts, and set size
+                        if (blockedCount > 0) {
+                            countText = '(' + String(actionCount) + ' removed; ' + String(noActionCount) + ' not in set; ' + String(blockedCount) + ' blocked by parent dir; set = ' + String(setSize) + ')';
+                        } else {
+                            countText = '(' + String(actionCount) + ' removed from set; ' + String(noActionCount) + ' not in set; set = ' + String(setSize) + ')';
+                        }
+                        countColour = { id: 'ignorelens.negationForeground' };
+                    } else {
+                        // Normal: "(X added to set; Y already in set; set = Z)"
+                        countText = '(' + String(actionCount) + ' added to set; ' + String(noActionCount) + ' already in set; set = ' + String(setSize) + ')';
+                        // Colour: red if actionCount is 0 (pattern adds nothing new), green otherwise
+                        if (actionCount === 0) {
+                            countColour = { id: 'ignorelens.noMatchForeground' };
+                        } else {
+                            countColour = { id: 'ignorelens.matchCountForeground' };
+                        }
+                    }
+                } else {
+                    // Basic mode: show "(X matches)"
+                    // Negations are yellow, normal patterns are green/red
+                    countText = '(' + String(actionCount) + ' matches)';
+                    if (isNegation) {
+                        countColour = { id: 'ignorelens.negationForeground' };
+                    } else {
+                        countColour = actionCount === 0
+                            ? { id: 'ignorelens.noMatchForeground' }
+                            : { id: 'ignorelens.matchCountForeground' };
+                    }
+                }
+
                 // Pad with non-breaking spaces to align all counts
                 const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
-                // Use red for 0 matches, green for >0
-                const countColour = matchCount === 0
-                    ? { id: 'ignorelens.noMatchForeground' }
-                    : { id: 'ignorelens.matchCountForeground' };
                 const countDecoration: vscode.DecorationOptions = {
                     range: range,
                     renderOptions: {
@@ -287,8 +350,11 @@ export class DecorationProvider implements vscode.Disposable {
                 matchCountDecorations.push(countDecoration);
             }
 
-            // Only decorate patterns that don't match any files (redundant patterns)
-            if (matchCount === 0 && this.noMatchDecorationType && this.currentStyle !== 'none') {
+            // A pattern is redundant when it adds nothing new to the set
+            // (either matches nothing, or all matches already in set)
+            // Negations are never redundant (they're informational even when 0)
+            const isRedundant = !isNegation && actionCount === 0;
+            if (isRedundant && this.noMatchDecorationType && this.currentStyle !== 'none') {
                 const range = line.range;
                 const decoration: vscode.DecorationOptions = { range };
                 noMatchDecorations.push(decoration);

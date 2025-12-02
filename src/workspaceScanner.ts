@@ -39,26 +39,9 @@ export class WorkspaceScanner implements vscode.Disposable {
             allFiles.push(normalisedPath);
         }
 
-        // Also include directories by extracting unique directory paths
-        const directories = new Set<string>();
-
-        for (const filePath of allFiles) {
-            const parts = filePath.split('/');
-            let currentPath = '';
-
-            for (let i = 0; i < parts.length - 1; i = i + 1) {
-                const separator = currentPath ? '/' : '';
-                currentPath = currentPath + separator + parts[i];
-                // Trailing slash indicates directory
-                const directoryPath = currentPath + '/';
-                directories.add(directoryPath);
-            }
-        }
-
-        const allPaths = [...allFiles, ...Array.from(directories)];
         const duration = Date.now() - startTime;
-        logger.logTiming('Workspace scan: ' + allPaths.length + ' files', duration);
-        return allPaths;
+        logger.logTiming('Workspace scan: ' + allFiles.length + ' files', duration);
+        return allFiles;
     }
 
     /**
@@ -107,27 +90,10 @@ export class WorkspaceScanner implements vscode.Disposable {
             }
         }
 
-        // Also include directories by extracting unique directory paths
-        const directories = new Set<string>();
-
-        for (const filePath of allFiles) {
-            const parts = filePath.split('/');
-            let currentPath = '';
-
-            for (let i = 0; i < parts.length - 1; i = i + 1) {
-                const separator = currentPath ? '/' : '';
-                currentPath = currentPath + separator + parts[i];
-                // Trailing slash indicates directory
-                const directoryPath = currentPath + '/';
-                directories.add(directoryPath);
-            }
-        }
-
-        const allPaths = [...allFiles, ...Array.from(directories)];
-        this.cachedFiles = allPaths;
+        this.cachedFiles = allFiles;
         this.cacheInvalidated = false;
 
-        return allPaths;
+        return allFiles;
     }
 
     /**

@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -50,6 +50,15 @@
           "light": "#008000",
           "highContrast": "#6A9955"
         }
+      },
+      {
+        "id": "ignorelens.negationForeground",
+        "description": "Text colour for negation pattern counts",
+        "defaults": {
+          "dark": "#CCAA00",
+          "light": "#996600",
+          "highContrast": "#FFCC00"
+        }
       }
     ],
     "configuration": {
@@ -81,6 +90,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show the number of matched files before each pattern"
+        },
+        "ignorelens.countMode": {
+          "type": "string",
+          "enum": ["basic", "advanced"],
+          "default": "basic",
+          "enumDescriptions": [
+            "Show total files matching each pattern",
+            "Track cumulative set: show added/removed counts, blocked negations, and set size"
+          ],
+          "description": "How to count pattern matches"
         },
         "ignorelens.debug": {
           "type": "boolean",

@@ -33,6 +33,7 @@ To use IgnoreLens with any file, change its language mode to `ignore` by clickin
 | `ignorelens.enabled` | Enable or disable IgnoreLens decorations | `true` |
 | `ignorelens.decorationStyle` | How to highlight redundant patterns: `none`, `background`, `text`, or `both` | `text` |
 | `ignorelens.showMatchCount` | Show the number of matched files after each pattern | `true` |
+| `ignorelens.countMode` | How to count matches: `basic` or `advanced` | `basic` |
 | `ignorelens.scanDebounceMs` | Debounce delay in milliseconds before rescanning | `500` |
 | `ignorelens.debug` | Enable debug logging to the Output panel | `false` |
 
@@ -43,6 +44,11 @@ To use IgnoreLens with any file, change its language mode to `ignore` by clickin
 - **text** - Coloured text (default)
 - **both** - Both background and text colour
 
+### Count Modes
+
+- **basic** (default) - Shows the total number of files each pattern matches, evaluated independently
+- **advanced** - Tracks a cumulative set where patterns add files and negations remove them. Implements Git-like directory traversal where negations cannot un-ignore files under ignored directories (applies to `dir/`, `dir/**`, and `dir/*` patterns). Shows `(X added to set; Y already in set; set = Z)` for normal patterns and `(X removed from set; Y not in set; set = Z)` for negations, or includes blocked count when applicable. Patterns that add nothing new (all matches already in set) are marked redundant
+
 ### Customising Colours
 
 You can customise the colours in your `settings.json`:
@@ -52,7 +58,8 @@ You can customise the colours in your `settings.json`:
   "workbench.colorCustomizations": {
     "ignorelens.noMatchForeground": "#f14c4c",
     "ignorelens.noMatchBackground": "#4a1a1a40",
-    "ignorelens.matchCountForeground": "#6A9955"
+    "ignorelens.matchCountForeground": "#6A9955",
+    "ignorelens.negationForeground": "#CCAA00"
   }
 }
 ```
@@ -76,9 +83,9 @@ If match counts aren't showing, settings are missing, or the extension behaves u
 
 ## Limitations
 
-**Rule order context is not tracked.** Negation patterns (e.g., `!important.log`) are evaluated independently rather than in the context of preceding rules. This means a negation that "unignores" a file which was never ignored by an earlier pattern won't be flagged as redundant.
-
 **Empty directories are not detected.** Directories are discovered by scanning files, so patterns targeting empty directories (e.g., `empty-folder/`) will always show zero matches even if the directory exists.
+
+**Basic mode evaluates patterns independently.** In the default `basic` count mode, each pattern is evaluated against all workspace files without considering rule order. Use `advanced` mode for cumulative tracking where you can see new matches versus previously matched files.
 
 ## Acknowledgements
 

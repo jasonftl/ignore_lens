@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 02/12/2025
+
+### Added
+- New `ignorelens.countMode` setting with two modes:
+  - `basic` (default): Shows total files matching each pattern
+  - `advanced`: Tracks a cumulative set where normal patterns add and negation patterns remove
+- New theme colour `ignorelens.negationForeground` for negation pattern counts (yellow)
+- Git-like directory traversal in advanced mode: negations cannot un-ignore files under ignored directories
+- Directory blocking now applies to `dir/`, `dir/**`, and `dir/*` style patterns
+- Negation directory patterns (`!dir/`) now remove directories from the blocked list
+- Blocked negation display: shows all counts `(X removed; Y not in set; Z blocked by parent dir; set = W)` when applicable
+
+### Changed
+- Advanced mode display format shows full information:
+  - Normal patterns: `(X added to set; Y already in set; set = Z)`
+  - Negation patterns: `(X removed from set; Y not in set; set = Z)` or includes blocked count
+- Advanced mode uses single cumulative set (negations actually remove files)
+- Negation patterns always display in yellow, never marked redundant
+- Normal patterns marked redundant when actionCount is 0 (matches nothing or all already in set)
+- Workspace scanner now returns only files, not synthetic directory entries
+- Extracted counting logic into separate module for testability
+
+### Fixed
+- Directory entries no longer inflate match counts
+- Shadowed/duplicate patterns now correctly marked as redundant (red) in advanced mode
+- countMode fallback now correctly defaults to 'basic' instead of 'total'
+- Trailing whitespace parsing now handles multiple escaped spaces correctly
+- Negating an empty directory now correctly removes it from ignoredDirs
+- Negation glob patterns (`!dir/**`, `!dir/*`) now correctly clear ignoredDirs
+
+### Tests
+- Added 27 new tests for counting logic, directory blocking, and trailing whitespace
+
 ## [0.3.0] - 01/12/2025
 
 ### Added

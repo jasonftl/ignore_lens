@@ -18,13 +18,17 @@ export class IgnoreParser {
     public parseLine(line: string): ParsedLine {
         // Handle trailing whitespace: trim unless escaped with backslash
         // Gitignore allows \<space> or \<tab> to preserve trailing whitespace
+        // Multiple escaped spaces are supported: "file\ \ \ " becomes "file   "
         let processedLine = line;
 
-        // Check for escaped trailing whitespace (backslash followed by space or tab at end)
-        const trailingEscapeMatch = processedLine.match(/\\([ \t])$/);
+        // Check for escaped trailing whitespace (one or more backslash+space/tab sequences at end)
+        // Pattern: (\\[ \t])+ at end of string
+        const trailingEscapeMatch = processedLine.match(/((?:\\[ \t])+)$/);
         if (trailingEscapeMatch) {
-            // Remove backslash but keep the whitespace character
-            processedLine = processedLine.slice(0, -2) + trailingEscapeMatch[1];
+            // Extract the escaped sequence and remove backslashes, keeping whitespace
+            const escapedPart = trailingEscapeMatch[1];
+            const preservedWhitespace = escapedPart.replace(/\\/g, '');
+            processedLine = processedLine.slice(0, -escapedPart.length) + preservedWhitespace;
         } else {
             // Trim trailing whitespace only
             processedLine = processedLine.replace(/\s+$/, '');

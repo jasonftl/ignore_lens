@@ -78,6 +78,34 @@ suite('IgnoreParser Test Suite', () => {
             assert.strictEqual(result.type, 'pattern');
             assert.strictEqual(result.pattern, '**/*.js');
         });
+
+        test('should preserve single escaped trailing space', () => {
+            // "file\ " should become "file " (backslash removed, space kept)
+            const result = parser.parseLine('file\\ ');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file ');
+        });
+
+        test('should preserve multiple escaped trailing spaces', () => {
+            // "file\ \ \ " should become "file   " (3 spaces preserved)
+            const result = parser.parseLine('file\\ \\ \\ ');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file   ');
+        });
+
+        test('should preserve escaped trailing tab', () => {
+            // "file\<tab>" should become "file<tab>"
+            const result = parser.parseLine('file\\\t');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file\t');
+        });
+
+        test('should preserve mixed escaped trailing whitespace', () => {
+            // "file\ \<tab>\ " should become "file <tab> " (space, tab, space)
+            const result = parser.parseLine('file\\ \\\t\\ ');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file \t ');
+        });
     });
 
     suite('parseFile', () => {
