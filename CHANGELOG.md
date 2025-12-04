@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 04/12/2025
+
+### Fixed
+- `dir/**/` patterns with trailing slash no longer block negations
+  - e.g., `node_modules/**/` then `!node_modules/ignore/` now works correctly
+
 ## [0.4.2] - 02/12/2025
 
 ### Changed

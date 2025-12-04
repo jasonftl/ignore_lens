@@ -428,6 +428,26 @@ suite('CountCalculator Test Suite', () => {
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 0);
             });
+
+            test('should NOT block negations for dir/**/ patterns with trailing slash', () => {
+                // Simulates: node_modules/**/, !node_modules/ignore/
+                // Bug fix: dir/**/ was incorrectly treated as blocking directory pattern
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern 1: node_modules/**/ should NOT add to ignoredDirs
+                const nodeFiles = ['node_modules/lodash/index.js', 'node_modules/ignore/index.js'];
+                const result1 = calculateAdvancedCount(nodeFiles, false, true, cumulativeSet, ignoredDirs, 'node_modules/**/');
+                assert.strictEqual(result1.actionCount, 2);
+                assert.ok(!ignoredDirs.has('node_modules/'));  // Should NOT be in ignoredDirs
+
+                // Pattern 2: !node_modules/ignore/ should NOT be blocked
+                const ignoreFiles = ['node_modules/ignore/index.js'];
+                const result2 = calculateAdvancedCount(ignoreFiles, true, true, cumulativeSet, ignoredDirs, '!node_modules/ignore/');
+                assert.strictEqual(result2.actionCount, 1);  // Successfully removed
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.setSize, 1);
+            });
         });
     });
 });

@@ -57,7 +57,17 @@ function extractDirectoryPrefixes(matchingFiles: string[], pattern: string, isDi
     // Only explicit directory patterns (ends with /) block negations
     // dir/* and dir/** do NOT block negations - they only ignore contents,
     // Git still traverses the directory and can apply negation patterns
+    // Check for * or ? which are always glob wildcards
     if (isDirectory) {
+        // If pattern contains * or ?, it's a glob pattern not a simple directory
+        // e.g., "node_modules/**/" should not block, only "node_modules/" should
+        // Note: [ and ] can be literal in directory names, so we only check * and ?
+        const patternWithoutTrailingSlash = pattern.endsWith('/') ? pattern.slice(0, -1) : pattern;
+        const hasWildcards = /[*?]/.test(patternWithoutTrailingSlash);
+        if (hasWildcards) {
+            return prefixes;
+        }
+
         const firstFile = matchingFiles[0];
         const slashIndex = firstFile.indexOf('/');
         if (slashIndex !== -1) {

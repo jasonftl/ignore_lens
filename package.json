@@ -2,13 +2,14 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Linters",
     "Visualization",
     "Other"
   ],
@@ -16,7 +17,8 @@
     "gitignore",
     "ignore",
     "patterns",
-    "validation"
+    "validation",
+    "qualityoflife"
   ],
   "activationEvents": [
     "onLanguage:ignore"

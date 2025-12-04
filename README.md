@@ -41,11 +41,13 @@ Decorations update automatically when you edit the file or when workspace files 
 
 ## How It Works
 
-IgnoreLens tracks a cumulative set of ignored files, processing patterns in order:
+IgnoreLens aligns with [Git's gitignore specification](https://git-scm.com/docs/gitignore) and tracks a cumulative set of ignored files, processing patterns in order:
 
 1. Normal patterns add matching files to the set
 2. Negation patterns (`!`) remove matching files from the set
-3. Directory patterns (`dir/`) block negations for files within (matching Git behaviour)
+3. Directory pattern (`dir/`) blocks negations for files within
+4. Directory pattern (`dir/*`) matches immediate contents only, allowing negations
+5. Directory pattern (`dir/**`) matches all nested contents, allowing negations
 
 [View flow diagram](docs/flow.md)
 
