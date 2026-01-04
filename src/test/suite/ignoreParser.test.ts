@@ -1,4 +1,4 @@
-// Date: 29/11/2025
+// Date: 04/01/2026
 // Unit tests for the IgnoreParser class
 
 import * as assert from 'assert';
@@ -120,6 +120,23 @@ suite('IgnoreParser Test Suite', () => {
             const result = parser.parseLine('file\t   ');
             assert.strictEqual(result.type, 'pattern');
             assert.strictEqual(result.pattern, 'file\t');
+        });
+
+        test('should preserve escaped ! for literal filename (not negation)', () => {
+            // "\!important.txt" should match a file named "!important.txt"
+            // The pattern should NOT be treated as negation
+            const result = parser.parseLine('\\!important.txt');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, '\\!important.txt');
+            assert.strictEqual(result.isNegation, false, 'escaped ! should not be negation');
+        });
+
+        test('should preserve escaped # for literal filename (not comment)', () => {
+            // "\#file.txt" should match a file named "#file.txt"
+            // The pattern should NOT be treated as comment
+            const result = parser.parseLine('\\#file.txt');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, '\\#file.txt');
         });
     });
 

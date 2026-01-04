@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -73,7 +73,12 @@
         },
         "ignorelens.decorationStyle": {
           "type": "string",
-          "enum": ["none", "background", "text", "both"],
+          "enum": [
+            "none",
+            "background",
+            "text",
+            "both"
+          ],
           "default": "text",
           "enumDescriptions": [
             "No decoration - patterns are not highlighted",
@@ -111,6 +116,7 @@
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
+    "@types/minimatch": "^5.1.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
@@ -123,7 +129,8 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "ignore": "^5.3.0"
+    "ignore": "^5.3.0",
+    "minimatch": "^10.1.1"
   },
   "repository": {
     "type": "git",

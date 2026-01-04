@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 04/01/2026
+
+### Added
+- Character class patterns without wildcards now match correctly
+  - e.g., `[a].ts` now matches `a.ts` (uses minimatch fallback)
+  - Supports ranges like `[a-z].txt` and sets like `[abc].js`
+
+### Fixed
+- Escaped `\!` and `\#` patterns now work correctly
+  - `\!important.txt` matches literal `!important.txt` (not treated as negation)
+  - `\#readme.txt` matches literal `#readme.txt` (not treated as comment)
+
 ## [0.4.5] - 04/01/2026
 
 ### Fixed
@@ -17,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anchored directory patterns (`/dist/`) now work correctly with negations
   - Leading `/` is now normalised when storing and deleting from ignoredDirs
   - `!/dist/` now correctly clears the block set by `/dist/`
+- Escaped directory patterns (`\[temp\]/`) now correctly block negations
+  - Backslash escapes are stripped when storing in ignoredDirs
+  - `\[temp\]/` blocks `!\[temp\]/*.tmp` as expected
+- Escaped wildcards (`dir\*/`) now treated as literal characters
+  - Previously detected as glob patterns and didn't block negations
+  - Now correctly recognised as directory pattern for literal `dir*` folder
+- Escaped directories in `/**` and `/*` negations now work correctly
+  - `!\[temp\]/**` now clears `[temp]/` from blocked directories
 - Fixed `showMatchCount` setting description (said "before" but renders after)
 
 ### Known Limitations

@@ -1,4 +1,4 @@
-// Date: 29/11/2025
+// Date: 04/01/2026
 // Parses ignore file lines to identify patterns, comments, and blank lines
 
 import { LineType, ParsedLine } from './types';
@@ -59,19 +59,14 @@ export class IgnoreParser {
             return result;
         }
 
-        // Handle escaped # at start (literal # filename)
-        if (processedLine.startsWith('\\#')) {
-            processedLine = processedLine.substring(1);  // Remove the backslash, keep #
-        }
-
         // Check for negation (lines starting with !, but not \!)
         // Leading spaces before ! are significant - " !file" is a pattern for " !file"
+        // Note: We do NOT unescape \! or \# here - let the ignore library handle them
+        // per gitignore spec. Unescaping here would cause the pattern matcher to
+        // misinterpret !file as negation when \!file means literal "!file".
         let isNegation = false;
-        if (processedLine.startsWith('!')) {
+        if (processedLine.startsWith('!') && !processedLine.startsWith('\\!')) {
             isNegation = true;
-        } else if (processedLine.startsWith('\\!')) {
-            // Escaped ! - literal ! filename, remove backslash
-            processedLine = processedLine.substring(1);
         }
 
         // This is a pattern

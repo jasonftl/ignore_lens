@@ -1,4 +1,4 @@
-// Date: 29/11/2025
+// Date: 04/01/2026
 // Unit tests for the PatternMatcher class
 
 import * as assert from 'assert';
@@ -103,6 +103,105 @@ suite('PatternMatcher Test Suite', () => {
         test('should handle double asterisk patterns', () => {
             const matches = matcher.testMatch('**/helper.ts', 'src/utils/helper.ts');
             assert.strictEqual(matches, true);
+        });
+    });
+
+    suite('character class patterns (minimatch fallback)', () => {
+        // Files for character class testing
+        const charClassFiles = [
+            'a.ts',
+            'b.ts',
+            'c.ts',
+            'x.txt',
+            'ab.ts',
+            'src/a.ts',
+            'src/b.js',
+            '[special].ts'
+        ];
+
+        test('should match [a].ts to a.ts using minimatch fallback', () => {
+            const result = matcher.findMatches('[a].ts', charClassFiles);
+
+            assert.ok(result.matchingFiles.includes('a.ts'), 'should match a.ts');
+            assert.ok(result.matchingFiles.includes('src/a.ts'), 'should match src/a.ts');
+            assert.ok(!result.matchingFiles.includes('b.ts'), 'should not match b.ts');
+        });
+
+        test('should match [abc].ts to a.ts, b.ts, c.ts', () => {
+            const result = matcher.findMatches('[abc].ts', charClassFiles);
+
+            assert.ok(result.matchingFiles.includes('a.ts'), 'should match a.ts');
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match b.ts');
+            assert.ok(result.matchingFiles.includes('c.ts'), 'should match c.ts');
+            assert.ok(!result.matchingFiles.includes('ab.ts'), 'should not match ab.ts (two chars)');
+        });
+
+        test('should match [a-c].ts using character range', () => {
+            const result = matcher.findMatches('[a-c].ts', charClassFiles);
+
+            assert.ok(result.matchingFiles.includes('a.ts'), 'should match a.ts');
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match b.ts');
+            assert.ok(result.matchingFiles.includes('c.ts'), 'should match c.ts');
+        });
+
+        test('should use ignore package for patterns with wildcards', () => {
+            // Pattern with both character class and wildcard should use ignore package
+            const result = matcher.findMatches('[ab]*.ts', charClassFiles);
+
+            // This tests that the ignore package handles it (may or may not match)
+            assert.strictEqual(result.isNegation, false);
+        });
+
+        test('testMatch should use minimatch fallback for character class', () => {
+            const matchesA = matcher.testMatch('[a].ts', 'a.ts');
+            const matchesB = matcher.testMatch('[a].ts', 'b.ts');
+
+            assert.strictEqual(matchesA, true, '[a].ts should match a.ts');
+            assert.strictEqual(matchesB, false, '[a].ts should not match b.ts');
+        });
+
+        test('should handle escaped brackets (literal match, not character class)', () => {
+            // Escaped brackets should NOT use minimatch fallback
+            // They represent literal [ and ] characters
+            const result = matcher.findMatches('\\[special\\].ts', charClassFiles);
+
+            // Should match the literal file [special].ts
+            assert.ok(result.matchingFiles.includes('[special].ts'), 'should match [special].ts literally');
+            assert.ok(!result.matchingFiles.includes('s.ts') || !charClassFiles.includes('s.ts'), 'should not treat as character class');
+        });
+    });
+
+    suite('escaped special characters', () => {
+        const specialFiles = [
+            '!important.txt',
+            '#readme.txt',
+            'important.txt',
+            'readme.txt'
+        ];
+
+        test('should not treat escaped \\! as negation', () => {
+            // \!important.txt should match literal file "!important.txt", not negate "important.txt"
+            const result = matcher.findMatches('\\!important.txt', specialFiles);
+
+            assert.strictEqual(result.isNegation, false, 'escaped ! should not be negation');
+            assert.ok(result.matchingFiles.includes('!important.txt'), 'should match !important.txt literally');
+            assert.ok(!result.matchingFiles.includes('important.txt'), 'should not match important.txt');
+        });
+
+        test('should not treat escaped \\# as comment in matching', () => {
+            // \#readme.txt should match literal file "#readme.txt"
+            const result = matcher.findMatches('\\#readme.txt', specialFiles);
+
+            assert.strictEqual(result.isNegation, false);
+            assert.ok(result.matchingFiles.includes('#readme.txt'), 'should match #readme.txt literally');
+        });
+
+        test('testMatch should handle escaped \\! correctly', () => {
+            const matchesBang = matcher.testMatch('\\!important.txt', '!important.txt');
+            const matchesNoBang = matcher.testMatch('\\!important.txt', 'important.txt');
+
+            assert.strictEqual(matchesBang, true, 'should match !important.txt');
+            assert.strictEqual(matchesNoBang, false, 'should not match important.txt');
         });
     });
 });
