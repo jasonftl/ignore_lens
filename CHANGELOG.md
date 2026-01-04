@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 04/01/2026
+
+### Fixed
+- Fixed missing minimatch dependency in published extension
+  - Added minimatch and its dependencies to .vscodeignore whitelist
+
 ## [0.4.6] - 04/01/2026
 
 ### Added
