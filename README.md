@@ -102,6 +102,8 @@ Standard gitignore syntax is supported:
 
 - **Hidden files are included in counts.** Files with the hidden attribute (Windows), hidden flag (macOS), or starting with `.` (Linux/Unix) are counted like regular files.
 
+- **Negated character classes may not work correctly.** Patterns like `[^a].ts` or `[!a].ts` (matching any character except `a`) may not match as expected due to an upstream library limitation.
+
 ## Troubleshooting
 
 If match counts aren't showing or the extension behaves unexpectedly, try uninstalling and reinstalling. VS Code can sometimes fail to fully load an updated extension.
@@ -110,9 +112,11 @@ If match counts aren't showing or the extension behaves unexpectedly, try uninst
 
 Developed with assistance from:
 - [Claude Code](https://claude.ai/code) (Opus 4.5)
-- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1-Codex-Max)
+- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1-Codex-Max & GPT-5.2-Codex-Max)
 
-Thanks to [GitSparTV](https://github.com/GitSparTV) for identifying the cumulative set tracking issue.
+Thanks to:
+- [GitSparTV](https://github.com/GitSparTV) for identifying the cumulative set tracking issue.
+- [RedCMD](https://github.com/RedCMD) for identifying the [a].ts wildcard and trailing tab issues.
 
 ## Licence
 

@@ -29,7 +29,53 @@ export function isUnderIgnoredDir(filePath: string, ignoredDirs: Set<string>): b
 }
 
 /**
- * Extracts directory prefixes from matched files for a directory-style pattern.
+ * Removes gitignore escape sequences from a pattern.
+ * In gitignore, backslash escapes special characters: \[ means literal [
+ *
+ * @param pattern - The pattern with possible escape sequences
+ * @returns Pattern with escapes resolved to literal characters
+ */
+function unescapePattern(pattern: string): string {
+    // Replace \X with X for any character X
+    // This handles \[, \], \*, \?, \#, \!, \\, etc.
+    return pattern.replace(/\\(.)/g, '$1');
+}
+
+/**
+ * Normalises a directory pattern for use in ignoredDirs.
+ * Strips leading / (anchored patterns), removes escape sequences,
+ * and ensures trailing /.
+ *
+ * @param pattern - The pattern string (may have leading ! for negation)
+ * @returns Normalised directory prefix for storage/lookup
+ */
+function normaliseDirectoryPrefix(pattern: string): string {
+    let normalised = pattern;
+
+    // Remove leading ! if present (for negation patterns)
+    if (normalised.startsWith('!')) {
+        normalised = normalised.substring(1);
+    }
+
+    // Remove leading / (anchored patterns store without it)
+    if (normalised.startsWith('/')) {
+        normalised = normalised.substring(1);
+    }
+
+    // Remove escape sequences (e.g., \[ -> [, \] -> ])
+    // This ensures "\[temp\]/" matches files under "[temp]/"
+    normalised = unescapePattern(normalised);
+
+    // Ensure trailing /
+    if (!normalised.endsWith('/')) {
+        normalised = normalised + '/';
+    }
+
+    return normalised;
+}
+
+/**
+ * Extracts directory prefixes from a directory-style pattern.
  * Only explicit directory patterns (ending with /) block negations.
  *
  * Per Git documentation: "It is not possible to re-include a file if a parent
@@ -42,37 +88,40 @@ export function isUnderIgnoredDir(filePath: string, ignoredDirs: Set<string>): b
  * Only "dir/" (explicit directory pattern) excludes the directory itself, which
  * prevents Git from traversing it and blocks all negations for files within.
  *
- * @param matchingFiles - Files that matched the pattern
  * @param pattern - The original pattern string
  * @param isDirectory - Whether pattern explicitly ends with /
  * @returns Set of directory prefixes to add to ignoredDirs
  */
-function extractDirectoryPrefixes(matchingFiles: string[], pattern: string, isDirectory: boolean): Set<string> {
+function extractDirectoryPrefixes(pattern: string, isDirectory: boolean): Set<string> {
     const prefixes = new Set<string>();
-
-    if (matchingFiles.length === 0) {
-        return prefixes;
-    }
 
     // Only explicit directory patterns (ends with /) block negations
     // dir/* and dir/** do NOT block negations - they only ignore contents,
     // Git still traverses the directory and can apply negation patterns
     // Check for * or ? which are always glob wildcards
     if (isDirectory) {
+        // Remove leading / for checking wildcards (anchored patterns)
+        let patternToCheck = pattern;
+        if (patternToCheck.startsWith('/')) {
+            patternToCheck = patternToCheck.substring(1);
+        }
+
         // If pattern contains * or ?, it's a glob pattern not a simple directory
         // e.g., "node_modules/**/" should not block, only "node_modules/" should
         // Note: [ and ] can be literal in directory names, so we only check * and ?
-        const patternWithoutTrailingSlash = pattern.endsWith('/') ? pattern.slice(0, -1) : pattern;
-        const hasWildcards = /[*?]/.test(patternWithoutTrailingSlash);
-        if (hasWildcards) {
+        // ISSUE-M004 fix: Only detect UNESCAPED wildcards (not preceded by \)
+        const patternWithoutTrailingSlash = patternToCheck.endsWith('/') ? patternToCheck.slice(0, -1) : patternToCheck;
+        // Match * or ? that are NOT preceded by a backslash
+        // Uses negative lookbehind (?<!\\) to exclude escaped wildcards
+        const hasUnescapedWildcards = /(?<!\\)[*?]/.test(patternWithoutTrailingSlash);
+        if (hasUnescapedWildcards) {
             return prefixes;
         }
 
-        const firstFile = matchingFiles[0];
-        const slashIndex = firstFile.indexOf('/');
-        if (slashIndex !== -1) {
-            prefixes.add(firstFile.substring(0, slashIndex + 1));
-        }
+        // Derive prefix from pattern itself, not from matched files
+        // This correctly handles nested directories like "src/vendor/"
+        const normalised = normaliseDirectoryPrefix(pattern);
+        prefixes.add(normalised);
         return prefixes;
     }
 
@@ -115,17 +164,29 @@ export function calculateAdvancedCount(
 
         // Check for explicit directory pattern (ends with /)
         if (patternWithoutNegation.endsWith('/')) {
-            ignoredDirs.delete(patternWithoutNegation);
+            // Use normalised prefix (handles leading / for anchored patterns)
+            const normalised = normaliseDirectoryPrefix(pattern);
+            ignoredDirs.delete(normalised);
         } else if (patternWithoutNegation.endsWith('/**')) {
             // Glob pattern negating entire directory contents: "dir/**"
-            // Use suffix check instead of regex to handle dir names with metacharacters
-            const dirPrefix = patternWithoutNegation.slice(0, -2);  // Remove "**", keep trailing /
-            ignoredDirs.delete(dirPrefix);
+            // Strip leading / and ** to get normalised dir prefix
+            let dirPattern = patternWithoutNegation.slice(0, -2);  // Remove "**", keep trailing /
+            if (dirPattern.startsWith('/')) {
+                dirPattern = dirPattern.substring(1);
+            }
+            // ISSUE-M005 fix: Unescape to match entries stored by normaliseDirectoryPrefix
+            dirPattern = unescapePattern(dirPattern);
+            ignoredDirs.delete(dirPattern);
         } else if (patternWithoutNegation.endsWith('/*')) {
             // Glob pattern negating immediate directory contents: "dir/*"
             // "dir/*.js" won't match (doesn't end with exactly /*)
-            const dirPrefix = patternWithoutNegation.slice(0, -1);  // Remove "*", keep trailing /
-            ignoredDirs.delete(dirPrefix);
+            let dirPattern = patternWithoutNegation.slice(0, -1);  // Remove "*", keep trailing /
+            if (dirPattern.startsWith('/')) {
+                dirPattern = dirPattern.substring(1);
+            }
+            // ISSUE-M005 fix: Unescape to match entries stored by normaliseDirectoryPrefix
+            dirPattern = unescapePattern(dirPattern);
+            ignoredDirs.delete(dirPattern);
         }
     }
 
@@ -156,7 +217,7 @@ export function calculateAdvancedCount(
 
     // For normal patterns, extract and add directory prefixes to block future negations
     if (!isNegation) {
-        const dirPrefixes = extractDirectoryPrefixes(matchingFiles, pattern, isDirectory);
+        const dirPrefixes = extractDirectoryPrefixes(pattern, isDirectory);
         for (const prefix of dirPrefixes) {
             ignoredDirs.add(prefix);
         }

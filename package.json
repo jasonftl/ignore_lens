@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -91,7 +91,7 @@
         "ignorelens.showMatchCount": {
           "type": "boolean",
           "default": true,
-          "description": "Show the number of matched files before each pattern"
+          "description": "Show match counts after each pattern"
         },
         "ignorelens.debug": {
           "type": "boolean",

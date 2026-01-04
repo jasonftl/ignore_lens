@@ -23,6 +23,7 @@ logs/
 
 # Project-specific
 commit_notes.txt
+ISSUES.md
 VERSION
 
 # OS files
@@ -32,3 +33,4 @@ Thumbs.db
 # Test output
 .vscode-test/
 coverage/
+

@@ -448,6 +448,114 @@ suite('CountCalculator Test Suite', () => {
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 1);
             });
+
+            test('should store correct prefix for nested directory patterns', () => {
+                // Bug fix: src/vendor/ was storing "src/" instead of "src/vendor/"
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern: src/vendor/ should store "src/vendor/", not "src/"
+                const vendorFiles = ['src/vendor/lib.js', 'src/vendor/util.js'];
+                calculateAdvancedCount(vendorFiles, false, true, cumulativeSet, ignoredDirs, 'src/vendor/');
+
+                // Should have "src/vendor/" in ignoredDirs, NOT "src/"
+                assert.ok(ignoredDirs.has('src/vendor/'));
+                assert.ok(!ignoredDirs.has('src/'));
+
+                // src/app.js should NOT be blocked (not under src/vendor/)
+                assert.strictEqual(isUnderIgnoredDir('src/app.js', ignoredDirs), false);
+
+                // src/vendor/lib.js SHOULD be blocked
+                assert.strictEqual(isUnderIgnoredDir('src/vendor/lib.js', ignoredDirs), true);
+            });
+
+            test('should handle anchored patterns with leading slash', () => {
+                // Bug fix: /dist/ should store "dist/" (without leading /)
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern: /dist/ (anchored) should store "dist/"
+                const distFiles = ['dist/bundle.js'];
+                calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, '/dist/');
+
+                // Should have "dist/" in ignoredDirs, NOT "/dist/"
+                assert.ok(ignoredDirs.has('dist/'));
+                assert.ok(!ignoredDirs.has('/dist/'));
+            });
+
+            test('should clear ignoredDirs with anchored negation patterns', () => {
+                // Bug fix: !/dist/ was trying to delete "/dist/" but stored as "dist/"
+                const cumulativeSet = new Set<string>(['dist/bundle.js', 'dist/important.js']);
+                const ignoredDirs = new Set<string>(['dist/']);
+
+                // Pattern: !/dist/ should delete "dist/" from ignoredDirs
+                const distFiles = ['dist/important.js'];
+                const result = calculateAdvancedCount(distFiles, true, true, cumulativeSet, ignoredDirs, '!/dist/');
+
+                // ignoredDirs should be empty now
+                assert.strictEqual(ignoredDirs.size, 0);
+                // File should be removed from set
+                assert.strictEqual(result.actionCount, 1);
+                assert.strictEqual(result.blockedCount, 0);
+            });
+
+            test('should block negations for escaped directory patterns', () => {
+                // Bug fix ISSUE-M003: \[temp\]/ was not detected as blocking
+                // Pattern \[temp\]/ should block negations like !\[temp\]/*.tmp
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern 1: \[temp\]/ ignores the directory (escaped brackets)
+                const tempFiles = ['[temp]/cache.tmp', '[temp]/data.tmp'];
+                const result1 = calculateAdvancedCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
+                assert.strictEqual(result1.actionCount, 2);
+                assert.strictEqual(result1.setSize, 2);
+                // Should store "[temp]/" (unescaped) in ignoredDirs
+                assert.ok(ignoredDirs.has('[temp]/'));
+
+                // Pattern 2: !\[temp\]/*.tmp should be BLOCKED
+                const result2 = calculateAdvancedCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/*.tmp');
+                assert.strictEqual(result2.actionCount, 0);  // Nothing removed
+                assert.strictEqual(result2.blockedCount, 2);  // Both blocked
+                assert.strictEqual(result2.setSize, 2);  // Set unchanged
+            });
+
+            test('should treat escaped wildcards as literal characters in directory patterns', () => {
+                // Bug fix ISSUE-M004: dir\*/ should block negations (escaped * is literal)
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern: dir\*/ is a directory named "dir*" (literal asterisk)
+                const starDirFiles = ['dir*/file.txt', 'dir*/sub/file2.txt'];
+                const result1 = calculateAdvancedCount(starDirFiles, false, true, cumulativeSet, ignoredDirs, 'dir\\*/');
+                assert.strictEqual(result1.actionCount, 2);
+                assert.strictEqual(result1.setSize, 2);
+                // Should store "dir*/" (unescaped) in ignoredDirs - NOT treated as glob
+                assert.ok(ignoredDirs.has('dir*/'));
+
+                // Negation should be blocked
+                const result2 = calculateAdvancedCount(starDirFiles, true, false, cumulativeSet, ignoredDirs, '!dir\\*/*.txt');
+                assert.strictEqual(result2.blockedCount, 2);  // Both blocked
+            });
+
+            test('should clear ignoredDirs with escaped directory in /** negation', () => {
+                // Bug fix ISSUE-M005: !\[temp\]/** should clear [temp]/ from ignoredDirs
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern 1: \[temp\]/ adds to ignoredDirs
+                const tempFiles = ['[temp]/file1.txt', '[temp]/file2.txt'];
+                calculateAdvancedCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
+                assert.ok(ignoredDirs.has('[temp]/'));
+                assert.strictEqual(cumulativeSet.size, 2);
+
+                // Pattern 2: !\[temp\]/** should clear [temp]/ from ignoredDirs and un-ignore
+                const result2 = calculateAdvancedCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/**');
+                assert.ok(!ignoredDirs.has('[temp]/'));  // Should be removed
+                assert.strictEqual(result2.actionCount, 2);  // Files un-ignored
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.setSize, 0);
+            });
         });
     });
 });

@@ -106,6 +106,21 @@ suite('IgnoreParser Test Suite', () => {
             assert.strictEqual(result.type, 'pattern');
             assert.strictEqual(result.pattern, 'file \t ');
         });
+
+        test('should preserve unescaped trailing tabs (gitignore spec)', () => {
+            // Gitignore only trims trailing spaces, not tabs
+            // "file\t" should remain "file\t"
+            const result = parser.parseLine('file\t');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file\t');
+        });
+
+        test('should trim trailing spaces but not tabs', () => {
+            // "file\t   " should become "file\t" (spaces trimmed, tab kept)
+            const result = parser.parseLine('file\t   ');
+            assert.strictEqual(result.type, 'pattern');
+            assert.strictEqual(result.pattern, 'file\t');
+        });
     });
 
     suite('parseFile', () => {

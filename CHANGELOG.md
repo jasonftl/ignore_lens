@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 04/01/2026
+
+### Fixed
+- Trailing tabs are now preserved in patterns (gitignore spec compliance)
+  - Previously `file\t` was incorrectly trimmed to `file`
+  - gitignore only trims trailing spaces, not tabs
+- Nested directory patterns now correctly block only their subtree
+  - Previously `src/vendor/` stored `src/` blocking all of `src/`
+  - Now correctly stores `src/vendor/` blocking only `src/vendor/*`
+- Anchored directory patterns (`/dist/`) now work correctly with negations
+  - Leading `/` is now normalised when storing and deleting from ignoredDirs
+  - `!/dist/` now correctly clears the block set by `/dist/`
+- Fixed `showMatchCount` setting description (said "before" but renders after)
+
+### Known Limitations
+- Negated character classes `[^a]` and `[!a]` may not work correctly due to upstream `ignore` library limitation
+
 ## [0.4.4] - 16/12/2025
 
 ### Added

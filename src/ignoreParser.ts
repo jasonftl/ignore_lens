@@ -30,8 +30,8 @@ export class IgnoreParser {
             const preservedWhitespace = escapedPart.replace(/\\/g, '');
             processedLine = processedLine.slice(0, -escapedPart.length) + preservedWhitespace;
         } else {
-            // Trim trailing whitespace only
-            processedLine = processedLine.replace(/\s+$/, '');
+            // Trim trailing spaces only (gitignore preserves trailing tabs)
+            processedLine = processedLine.replace(/ +$/, '');
         }
 
         // Check for blank lines (after trailing space processing)
