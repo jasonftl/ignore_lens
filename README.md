@@ -100,6 +100,8 @@ Standard gitignore syntax is supported:
 
 - **Empty directories are not detected.** Directories are discovered by scanning files, so patterns targeting empty directories will show zero matches even if the directory exists.
 
+- **Hidden files are included in counts.** Files with the hidden attribute (Windows), hidden flag (macOS), or starting with `.` (Linux/Unix) are counted like regular files.
+
 ## Troubleshooting
 
 If match counts aren't showing or the extension behaves unexpectedly, try uninstalling and reinstalling. VS Code can sometimes fail to fully load an updated extension.
