@@ -54,7 +54,7 @@ IgnoreLens supports multiple ignore file formats with accurate semantics:
 | Pattern | .gitignore / .prettierignore | .vscodeignore |
 |---------|------------------------------|---------------|
 | `*.log` | `data.log`, `logs/error.log`, `src/debug.log` | `data.log` only (root level) |
-| `**/*.log` | `data.log`, `logs/error.log`, `src/debug.log` | `logs/error.log`, `src/debug.log` (not root) |
+| `**/*.log` | `data.log`, `logs/error.log`, `src/debug.log` | `data.log`, `logs/error.log`, `src/debug.log` |
 | `node_modules/` | `node_modules/**` (blocks negations) | `node_modules/**` (negations work) |
 | `!node_modules/lodash/**` | Blocked (parent ignored) | Works (removes from set) |
 | `dist/*.js` | `dist/bundle.js` | `dist/bundle.js` |
@@ -154,8 +154,6 @@ Standard gitignore syntax is supported:
 - **Empty directories are not detected.** Directories are discovered by scanning files, so patterns targeting empty directories will show zero matches even if the directory exists.
 
 - **Hidden files are included in counts.** Files with the hidden attribute (Windows), hidden flag (macOS), or starting with `.` (Linux/Unix) are counted like regular files.
-
-- **Negated character classes may not work correctly.** Patterns like `[^a].ts` or `[!a].ts` (matching any character except `a`) may not match as expected due to an upstream library limitation.
 
 ## Troubleshooting
 

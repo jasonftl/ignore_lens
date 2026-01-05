@@ -250,4 +250,50 @@ suite('GitignoreMatcher Test Suite', () => {
             assert.strictEqual(matchesNoBang, false, 'should not match important.txt');
         });
     });
+
+    suite('negated character classes with wildcards', () => {
+        // Bug fix: negated character classes with wildcards were inverted by ignore package
+        const negCharFiles = [
+            'a.ts',
+            'b.ts',
+            'abc.ts',
+            'bcd.ts',
+            'src/a.ts',
+            'src/b.ts'
+        ];
+
+        test('should match [^a]*.ts (files not starting with a)', () => {
+            const result = matcher.findMatches('[^a]*.ts', negCharFiles);
+
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match b.ts');
+            assert.ok(result.matchingFiles.includes('bcd.ts'), 'should match bcd.ts');
+            assert.ok(result.matchingFiles.includes('src/b.ts'), 'should match src/b.ts');
+            assert.ok(!result.matchingFiles.includes('a.ts'), 'should NOT match a.ts');
+            assert.ok(!result.matchingFiles.includes('abc.ts'), 'should NOT match abc.ts');
+        });
+
+        test('should match **/[^a].ts (single char not a, recursive)', () => {
+            const result = matcher.findMatches('**/[^a].ts', negCharFiles);
+
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match b.ts');
+            assert.ok(result.matchingFiles.includes('src/b.ts'), 'should match src/b.ts');
+            assert.ok(!result.matchingFiles.includes('a.ts'), 'should NOT match a.ts');
+            assert.ok(!result.matchingFiles.includes('src/a.ts'), 'should NOT match src/a.ts');
+        });
+
+        test('should match [!a]*.ts (alternative negation syntax)', () => {
+            const result = matcher.findMatches('[!a]*.ts', negCharFiles);
+
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match b.ts');
+            assert.ok(result.matchingFiles.includes('bcd.ts'), 'should match bcd.ts');
+            assert.ok(!result.matchingFiles.includes('a.ts'), 'should NOT match a.ts');
+        });
+
+        test('testMatch should handle negated character class with wildcard', () => {
+            assert.strictEqual(matcher.testMatch('[^a]*.ts', 'b.ts'), true);
+            assert.strictEqual(matcher.testMatch('[^a]*.ts', 'bcd.ts'), true);
+            assert.strictEqual(matcher.testMatch('[^a]*.ts', 'a.ts'), false);
+            assert.strictEqual(matcher.testMatch('[^a]*.ts', 'abc.ts'), false);
+        });
+    });
 });

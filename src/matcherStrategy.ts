@@ -27,7 +27,14 @@ function needsMinimatchFallback(pattern: string): boolean {
     const isNegation = pattern.startsWith('!') && !pattern.startsWith('\\!');
     const cleanPattern = isNegation ? pattern.substring(1) : pattern;
 
-    // Check for wildcards - if present, ignore package handles it fine
+    // Check for negated character classes [^...] or [!...]
+    // These MUST use minimatch because the ignore package inverts them
+    const hasNegatedCharClass = /(?<!\\)\[[\^!]/.test(cleanPattern);
+    if (hasNegatedCharClass) {
+        return true;
+    }
+
+    // For non-negated patterns with wildcards, ignore package handles it fine
     if (cleanPattern.includes('*')) {
         return false;
     }

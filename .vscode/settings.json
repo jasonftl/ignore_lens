@@ -13,6 +13,7 @@
     "files.associations": {
         ".gitignore": "ignore",
         ".vscodeignore": "ignore",
-        ".prettierignore": "ignore"
+        ".prettierignore": "ignore",
+        "VERSION": "plaintext"
     }
 }

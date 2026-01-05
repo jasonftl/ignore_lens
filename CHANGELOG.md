@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 05/01/2026
+
+### Fixed
+- Documentation: `**/*.log` pattern now correctly shown as matching root-level files for .vscodeignore (ISSUE-L009)
+
 ## [0.6.0] - 05/01/2026
 
 ### Added
@@ -20,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anchored character class patterns with subpaths now match correctly (ISSUE-M012)
   - `/[ab]/file.txt` now matches `a/file.txt` and `b/file.txt`
   - Simple anchored patterns like `/[ab].txt` still match root-level only
+- Negated character classes with wildcards now match correctly (ISSUE-M013)
+  - `[^a]*.ts` now correctly matches files not starting with `a`
+  - `**/[!a].ts` now works as expected
+  - Previously these patterns produced inverted results due to upstream `ignore` library bug
 
 ## [0.5.0] - 05/01/2026
 
@@ -83,9 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Escaped directories in `/**` and `/*` negations now work correctly
   - `!\[temp\]/**` now clears `[temp]/` from blocked directories
 - Fixed `showMatchCount` setting description (said "before" but renders after)
-
-### Known Limitations
-- Negated character classes `[^a]` and `[!a]` may not work correctly due to upstream `ignore` library limitation
 
 ## [0.4.4] - 16/12/2025
 
