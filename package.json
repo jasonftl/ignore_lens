@@ -2,7 +2,7 @@
   "name": "ignore-lens",
   "displayName": "IgnoreLens",
   "description": "Highlights how many files each ignore line matches and flags those hitting zero for easy identification.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "ignore-lens",
   "icon": "images/icon.png",
   "engines": {
@@ -16,6 +16,7 @@
   "keywords": [
     "gitignore",
     "vscodeignore",
+    "prettierignore",
     "ignore",
     "patterns",
     "validation",
@@ -23,7 +24,8 @@
   ],
   "activationEvents": [
     "onLanguage:ignore",
-    "workspaceContains:**/.vscodeignore"
+    "workspaceContains:**/.vscodeignore",
+    "workspaceContains:**/.prettierignore"
   ],
   "main": "./out/extension.js",
   "contributes": {

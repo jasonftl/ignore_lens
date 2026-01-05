@@ -4,8 +4,11 @@
 /**
  * The type of ignore file being processed.
  * Different file types have different parsing and matching semantics.
+ * - gitignore: Standard gitignore semantics (ignore package, basename matching)
+ * - vscodeignore: VS Code extension ignore (minimatch, root-only matching)
+ * - prettierignore: Prettier ignore (same semantics as gitignore)
  */
-export type IgnoreFileType = 'gitignore' | 'vscodeignore';
+export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'prettierignore';
 
 /**
  * The type of line in an ignore file.

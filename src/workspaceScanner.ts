@@ -17,7 +17,7 @@ export class WorkspaceScanner implements vscode.Disposable {
      * Retrieves all files in a specific workspace folder.
      * Files are returned as relative paths from the folder root with forward slashes.
      *
-     * @param folder - The workspace folder to scan (if undefined, scans all folders)
+     * @param folder - The workspace folder to scan
      * @returns Array of relative file paths
      */
     public async getFilesInFolder(folder: vscode.WorkspaceFolder): Promise<string[]> {

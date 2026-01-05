@@ -180,7 +180,6 @@ export class VscodeignoreMatcher implements IPatternMatcher {
     /**
      * Expands a folder pattern to include all contents.
      * vsce does: patterns like "folder/" become "folder/**"
-     * Also handles patterns without trailing slash if they don't contain wildcards.
      *
      * @param pattern - The original pattern
      * @returns Expanded pattern or original if no expansion needed
@@ -251,6 +250,7 @@ export class VscodeignoreMatcher implements IPatternMatcher {
 
 /**
  * Factory function to get the appropriate matcher for a file type.
+ * Note: prettierignore uses the same matcher as gitignore (both use the ignore package).
  *
  * @param fileType - The type of ignore file
  * @returns Matcher instance for that file type
@@ -259,5 +259,6 @@ export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
     if (fileType === 'vscodeignore') {
         return new VscodeignoreMatcher();
     }
+    // gitignore and prettierignore use the same matcher
     return new GitignoreMatcher();
 }

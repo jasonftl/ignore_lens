@@ -13,7 +13,7 @@ let workspaceScanner: WorkspaceScanner | undefined;
 
 /**
  * Checks if a document is a supported ignore file type.
- * Supports .gitignore (via languageId) and .vscodeignore (via filename).
+ * Supports .gitignore (via languageId), .vscodeignore and .prettierignore (via filename).
  *
  * @param document - The text document to check
  * @returns True if the document is a supported ignore file
@@ -24,9 +24,9 @@ function isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
         return true;
     }
 
-    // Also check filename for .vscodeignore (may not have 'ignore' languageId)
+    // Also check filenames for files that may not have 'ignore' languageId
     const fileName = path.basename(document.uri.fsPath).toLowerCase();
-    if (fileName === '.vscodeignore') {
+    if (fileName === '.vscodeignore' || fileName === '.prettierignore') {
         return true;
     }
 

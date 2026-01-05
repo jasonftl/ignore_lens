@@ -37,7 +37,8 @@ export class DecorationProvider implements vscode.Disposable {
 
     /**
      * Detects the ignore file type from the document.
-     * Returns 'vscodeignore' for .vscodeignore files, otherwise 'gitignore'.
+     * Returns 'vscodeignore' for .vscodeignore, 'prettierignore' for .prettierignore,
+     * otherwise 'gitignore'.
      *
      * @param document - The text document to check
      * @returns The detected ignore file type
@@ -47,6 +48,10 @@ export class DecorationProvider implements vscode.Disposable {
 
         if (fileName === '.vscodeignore') {
             return 'vscodeignore';
+        }
+
+        if (fileName === '.prettierignore') {
+            return 'prettierignore';
         }
 
         // Default to gitignore for .gitignore and other ignore files
@@ -65,9 +70,9 @@ export class DecorationProvider implements vscode.Disposable {
             return true;
         }
 
-        // Also check filename for .vscodeignore (may not have 'ignore' languageId)
+        // Also check filenames for files that may not have 'ignore' languageId
         const fileName = path.basename(document.uri.fsPath).toLowerCase();
-        if (fileName === '.vscodeignore') {
+        if (fileName === '.vscodeignore' || fileName === '.prettierignore') {
             return true;
         }
 
@@ -135,7 +140,7 @@ export class DecorationProvider implements vscode.Disposable {
             this.noMatchDecorationType = vscode.window.createTextEditorDecorationType(noMatchOptions);
         }
 
-        // Create match count decoration type (renders count before line)
+        // Create match count decoration type (renders count after line)
         if (this.showMatchCount) {
             this.matchCountDecorationType = vscode.window.createTextEditorDecorationType({});
         } else {
