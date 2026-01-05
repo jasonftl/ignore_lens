@@ -1,7 +1,8 @@
-// Date: 01/12/2025
+// Date: 05/01/2026
 // Main extension entry point - handles activation and coordinates components
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
 import { getLogger, disposeLogger } from './logger';
@@ -9,6 +10,28 @@ import { getLogger, disposeLogger } from './logger';
 // Module-level references to components
 let decorationProvider: DecorationProvider | undefined;
 let workspaceScanner: WorkspaceScanner | undefined;
+
+/**
+ * Checks if a document is a supported ignore file type.
+ * Supports .gitignore (via languageId) and .vscodeignore (via filename).
+ *
+ * @param document - The text document to check
+ * @returns True if the document is a supported ignore file
+ */
+function isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
+    // Check for 'ignore' language ID (standard .gitignore detection)
+    if (document.languageId === 'ignore') {
+        return true;
+    }
+
+    // Also check filename for .vscodeignore (may not have 'ignore' languageId)
+    const fileName = path.basename(document.uri.fsPath).toLowerCase();
+    if (fileName === '.vscodeignore') {
+        return true;
+    }
+
+    return false;
+}
 
 /**
  * Activates the extension.
@@ -28,7 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register for active editor changes
     const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor && editor.document.languageId === 'ignore' && decorationProvider) {
+        if (editor && isSupportedIgnoreFile(editor.document) && decorationProvider) {
             decorationProvider.triggerUpdateDecorations(editor, false, 'editor switch');
         }
     });
@@ -37,7 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register for document changes (with debounce)
     const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(event => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && event.document === editor.document && event.document.languageId === 'ignore' && decorationProvider) {
+        if (editor && event.document === editor.document && isSupportedIgnoreFile(event.document) && decorationProvider) {
             decorationProvider.triggerUpdateDecorations(editor, true, 'ignore file edit');
         }
     });
@@ -46,7 +69,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register for document open events (also fires on language mode change)
     const documentOpenDisposable = vscode.workspace.onDidOpenTextDocument(document => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document === document && document.languageId === 'ignore' && decorationProvider) {
+        if (editor && editor.document === document && isSupportedIgnoreFile(document) && decorationProvider) {
             decorationProvider.triggerUpdateDecorations(editor, false, 'document open');
         }
     });
@@ -88,7 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(configDisposable);
 
     // Initial decoration update for the active editor
-    if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.languageId === 'ignore') {
+    if (vscode.window.activeTextEditor && isSupportedIgnoreFile(vscode.window.activeTextEditor.document)) {
         decorationProvider.updateDecorations(vscode.window.activeTextEditor);
     }
 }
@@ -100,7 +123,7 @@ export function activate(context: vscode.ExtensionContext): void {
  */
 function refreshActiveEditor(reason?: string): void {
     const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.languageId === 'ignore' && decorationProvider) {
+    if (editor && isSupportedIgnoreFile(editor.document) && decorationProvider) {
         decorationProvider.triggerUpdateDecorations(editor, true, reason);
     }
 }

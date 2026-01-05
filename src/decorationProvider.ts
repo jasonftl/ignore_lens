@@ -1,14 +1,14 @@
-// Date: 02/12/2025
+// Date: 05/01/2026
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { WorkspaceScanner } from './workspaceScanner';
-import { IgnoreParser } from './ignoreParser';
-import { PatternMatcher } from './patternMatcher';
-import { DecorationStyle } from './types';
+import { DecorationStyle, IgnoreFileType } from './types';
 import { getLogger } from './logger';
-import { calculateAdvancedCount } from './countCalculator';
+import { getParser, ILineParser } from './parserStrategy';
+import { getMatcher, IPatternMatcher } from './matcherStrategy';
+import { getCountCalculator, ICountCalculator } from './countStrategy';
 
 /**
  * Provides line decorations for ignore files.
@@ -19,8 +19,6 @@ export class DecorationProvider implements vscode.Disposable {
     private matchCountDecorationType: vscode.TextEditorDecorationType | undefined;
     private updateTimeout: NodeJS.Timeout | undefined;
     private updateVersion: number = 0;
-    private parser: IgnoreParser;
-    private matcher: PatternMatcher;
     private currentStyle: DecorationStyle;
     private showMatchCount: boolean;
 
@@ -30,13 +28,50 @@ export class DecorationProvider implements vscode.Disposable {
      * @param workspaceScanner - The workspace scanner for getting file lists
      */
     constructor(private workspaceScanner: WorkspaceScanner) {
-        this.parser = new IgnoreParser();
-        this.matcher = new PatternMatcher();
         this.currentStyle = this.getDecorationStyle();
         this.showMatchCount = this.getShowMatchCount();
 
         // Create initial decoration types
         this.createDecorationTypes();
+    }
+
+    /**
+     * Detects the ignore file type from the document.
+     * Returns 'vscodeignore' for .vscodeignore files, otherwise 'gitignore'.
+     *
+     * @param document - The text document to check
+     * @returns The detected ignore file type
+     */
+    private detectFileType(document: vscode.TextDocument): IgnoreFileType {
+        const fileName = path.basename(document.uri.fsPath).toLowerCase();
+
+        if (fileName === '.vscodeignore') {
+            return 'vscodeignore';
+        }
+
+        // Default to gitignore for .gitignore and other ignore files
+        return 'gitignore';
+    }
+
+    /**
+     * Checks if a document is a supported ignore file type.
+     *
+     * @param document - The text document to check
+     * @returns True if the document is a supported ignore file
+     */
+    private isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
+        // Check for 'ignore' language ID (standard .gitignore detection)
+        if (document.languageId === 'ignore') {
+            return true;
+        }
+
+        // Also check filename for .vscodeignore (may not have 'ignore' languageId)
+        const fileName = path.basename(document.uri.fsPath).toLowerCase();
+        if (fileName === '.vscodeignore') {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -157,12 +192,18 @@ export class DecorationProvider implements vscode.Disposable {
             return;
         }
 
-        // Only process ignore language files
-        if (editor.document.languageId !== 'ignore') {
+        // Only process supported ignore files
+        if (!this.isSupportedIgnoreFile(editor.document)) {
             return;
         }
 
         const document = editor.document;
+
+        // Detect file type and get appropriate strategies
+        const fileType = this.detectFileType(document);
+        const parser: ILineParser = getParser(fileType);
+        const matcher: IPatternMatcher = getMatcher(fileType);
+        const countCalculator: ICountCalculator = getCountCalculator(fileType);
         const noMatchDecorations: vscode.DecorationOptions[] = [];
         const matchCountDecorations: vscode.DecorationOptions[] = [];
 
@@ -238,7 +279,7 @@ export class DecorationProvider implements vscode.Disposable {
 
         for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex = lineIndex + 1) {
             const line = document.lineAt(lineIndex);
-            const parsedLine = this.parser.parseLine(line.text);
+            const parsedLine = parser.parseLine(line.text);
 
             // Skip comments and blank lines (no count to show)
             if (parsedLine.type === 'comment' || parsedLine.type === 'blank') {
@@ -246,11 +287,11 @@ export class DecorationProvider implements vscode.Disposable {
             }
 
             // Check pattern against workspace files
-            const matchResult = this.matcher.findMatches(parsedLine.pattern, workspaceFiles);
+            const matchResult = matcher.findMatches(parsedLine.pattern, workspaceFiles);
             const lineLength = line.text.length;
 
-            // Calculate counts using cumulative set tracking
-            const countResult = calculateAdvancedCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern);
+            // Calculate counts using cumulative set tracking (strategy handles blocking rules)
+            const countResult = countCalculator.calculateCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern);
             const actionCount = countResult.actionCount;
             const noActionCount = countResult.noActionCount;
             const blockedCount = countResult.blockedCount;

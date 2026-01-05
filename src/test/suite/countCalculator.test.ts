@@ -409,21 +409,23 @@ suite('CountCalculator Test Suite', () => {
                 assert.strictEqual(cumulativeSet.size, 1);
             });
 
-            test('should handle directory names with glob metacharacters', () => {
-                // Simulates: [tmp]/, ![tmp]/** - directory name contains [ and ]
-                // Bug fix: regex previously excluded dir names with *, ?, [, ]
+            test('should handle escaped directory names with glob metacharacters', () => {
+                // Simulates: \[tmp\]/, !\[tmp\]/** - literal directory name [tmp]
+                // To match literal brackets, they must be escaped
+                // Unescaped [tmp]/ is a character class matching t/, m/, or p/
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                // Pattern 1: [tmp]/ ignores the directory (name contains metacharacters)
+                // Pattern 1: \[tmp\]/ ignores the literal directory [tmp]/
                 const tmpFiles = ['[tmp]/file1.txt', '[tmp]/sub/file2.txt'];
-                calculateAdvancedCount(tmpFiles, false, true, cumulativeSet, ignoredDirs, '[tmp]/');
+                calculateAdvancedCount(tmpFiles, false, true, cumulativeSet, ignoredDirs, '\\[tmp\\]/');
+                // Stored as unescaped form: [tmp]/
                 assert.ok(ignoredDirs.has('[tmp]/'));
                 assert.strictEqual(cumulativeSet.size, 2);
 
-                // Pattern 2: ![tmp]/** should clear [tmp]/ from ignoredDirs
-                const result2 = calculateAdvancedCount(tmpFiles, true, false, cumulativeSet, ignoredDirs, '![tmp]/**');
-                assert.ok(!ignoredDirs.has('[tmp]/'));  // Should be removed despite metacharacters
+                // Pattern 2: !\[tmp\]/** should clear [tmp]/ from ignoredDirs
+                const result2 = calculateAdvancedCount(tmpFiles, true, false, cumulativeSet, ignoredDirs, '!\\[tmp\\]/**');
+                assert.ok(!ignoredDirs.has('[tmp]/'));  // Should be removed
                 assert.strictEqual(result2.actionCount, 2);  // Files should be removed from set
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 0);
@@ -555,6 +557,40 @@ suite('CountCalculator Test Suite', () => {
                 assert.strictEqual(result2.actionCount, 2);  // Files un-ignored
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 0);
+            });
+
+            test('should NOT store character class directory patterns as literal prefixes', () => {
+                // Bug fix ISSUE-M007: [ab]/ should be treated as wildcard, not stored literally
+                // Git treats [ab]/ as matching directories 'a' or 'b', not a literal '[ab]'
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern: [ab]/ is a glob pattern matching directories a/ or b/
+                const files = ['a/file.txt', 'b/file.txt'];
+                calculateAdvancedCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
+
+                // Should NOT store '[ab]/' as literal prefix (it's a wildcard pattern)
+                assert.ok(!ignoredDirs.has('[ab]/'));
+                // Files should still be added to cumulative set
+                assert.strictEqual(cumulativeSet.size, 2);
+            });
+
+            test('should allow negations for files under character class matched directories', () => {
+                // Bug fix ISSUE-M007: Negations under [ab]/ matched dirs should work
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                // Pattern 1: [ab]/ matches a/ and b/
+                const files = ['a/file.txt', 'b/file.txt'];
+                calculateAdvancedCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
+                assert.strictEqual(cumulativeSet.size, 2);
+                // ignoredDirs should be empty (pattern is a wildcard)
+                assert.strictEqual(ignoredDirs.size, 0);
+
+                // Pattern 2: !a/file.txt should work (not blocked)
+                const result2 = calculateAdvancedCount(['a/file.txt'], true, false, cumulativeSet, ignoredDirs, '!a/file.txt');
+                assert.strictEqual(result2.actionCount, 1);  // Successfully removed
+                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
             });
         });
     });

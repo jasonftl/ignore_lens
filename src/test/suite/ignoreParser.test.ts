@@ -168,5 +168,40 @@ suite('IgnoreParser Test Suite', () => {
             assert.strictEqual(results.length, 1);
             assert.strictEqual(results[0].type, 'blank');
         });
+
+        test('should strip UTF-8 BOM from first line', () => {
+            // Bug fix ISSUE-M008: BOM should be stripped before parsing
+            // UTF-8 BOM is \uFEFF (byte order mark)
+            const content = '\uFEFF*.log\nnode_modules/';
+            const results = parser.parseFile(content);
+
+            assert.strictEqual(results.length, 2);
+            // First pattern should NOT include BOM
+            assert.strictEqual(results[0].type, 'pattern');
+            assert.strictEqual(results[0].pattern, '*.log');
+            assert.ok(!results[0].pattern.startsWith('\uFEFF'), 'BOM should be stripped');
+        });
+
+        test('should correctly parse comment with BOM prefix', () => {
+            // Bug fix ISSUE-M008: BOM before # should still be detected as comment
+            const content = '\uFEFF# This is a comment\n*.js';
+            const results = parser.parseFile(content);
+
+            assert.strictEqual(results.length, 2);
+            // First line should be a comment (not pattern with BOM prefix)
+            assert.strictEqual(results[0].type, 'comment');
+            assert.strictEqual(results[1].type, 'pattern');
+            assert.strictEqual(results[1].pattern, '*.js');
+        });
+
+        test('should handle file without BOM normally', () => {
+            // Ensure non-BOM files still work correctly
+            const content = '*.log\nnode_modules/';
+            const results = parser.parseFile(content);
+
+            assert.strictEqual(results.length, 2);
+            assert.strictEqual(results[0].pattern, '*.log');
+            assert.strictEqual(results[1].pattern, 'node_modules/');
+        });
     });
 });

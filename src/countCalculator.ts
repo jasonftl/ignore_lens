@@ -106,14 +106,15 @@ function extractDirectoryPrefixes(pattern: string, isDirectory: boolean): Set<st
             patternToCheck = patternToCheck.substring(1);
         }
 
-        // If pattern contains * or ?, it's a glob pattern not a simple directory
+        // If pattern contains unescaped *, ?, or [ it's a glob pattern not a simple directory
         // e.g., "node_modules/**/" should not block, only "node_modules/" should
-        // Note: [ and ] can be literal in directory names, so we only check * and ?
+        // Character classes like [ab]/ should be treated as wildcards (match multiple directories)
         // ISSUE-M004 fix: Only detect UNESCAPED wildcards (not preceded by \)
+        // ISSUE-M007 fix: Also detect [ as wildcard start (character class)
         const patternWithoutTrailingSlash = patternToCheck.endsWith('/') ? patternToCheck.slice(0, -1) : patternToCheck;
-        // Match * or ? that are NOT preceded by a backslash
+        // Match *, ?, or [ that are NOT preceded by a backslash
         // Uses negative lookbehind (?<!\\) to exclude escaped wildcards
-        const hasUnescapedWildcards = /(?<!\\)[*?]/.test(patternWithoutTrailingSlash);
+        const hasUnescapedWildcards = /(?<!\\)[*?\[]/.test(patternWithoutTrailingSlash);
         if (hasUnescapedWildcards) {
             return prefixes;
         }

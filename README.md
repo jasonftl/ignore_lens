@@ -39,15 +39,31 @@ Patterns that don't match any files are highlighted in red, making it easy to sp
 
 Decorations update automatically when you edit the file or when workspace files change.
 
+## Supported Files
+
+IgnoreLens supports multiple ignore file formats with accurate semantics:
+
+| File | Pattern Matching | Notes |
+|------|-----------------|-------|
+| `.gitignore` | fnmatch with basename matching | `*.log` matches at any depth |
+| `.vscodeignore` | minimatch (strict) | `*.log` only matches root; use `**/*.log` for recursive |
+
+### Key Differences
+
+| Behaviour | .gitignore | .vscodeignore |
+|-----------|------------|---------------|
+| Whitespace | Trims trailing spaces only | Trims all leading/trailing whitespace |
+| Pattern matching | Basename matching (patterns match anywhere) | Strict path matching (must include `**/` for recursive) |
+| Directory blocking | `dir/` blocks negations for files inside | No blocking (negations always work) |
+
 ## How It Works
 
-IgnoreLens aligns with [Git's gitignore specification](https://git-scm.com/docs/gitignore) and tracks a cumulative set of ignored files, processing patterns in order:
+IgnoreLens tracks a cumulative set of ignored files, processing patterns in order:
 
 1. Normal patterns add matching files to the set
 2. Negation patterns (`!`) remove matching files from the set
-3. Directory pattern (`dir/`) blocks negations for files within
-4. Directory pattern (`dir/*`) matches immediate contents only, allowing negations
-5. Directory pattern (`dir/**`) matches all nested contents, allowing negations
+3. For `.gitignore`: Directory patterns (`dir/`) block negations for files within
+4. For `.vscodeignore`: Negations always work (no directory blocking)
 
 [View flow diagram](docs/flow.md)
 

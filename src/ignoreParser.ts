@@ -89,7 +89,13 @@ export class IgnoreParser {
      * @returns Array of ParsedLine objects
      */
     public parseFile(content: string): ParsedLine[] {
-        const lines = content.split(/\r?\n/);
+        // Strip UTF-8 BOM if present (common on Windows-authored files)
+        let processedContent = content;
+        if (processedContent.charCodeAt(0) === 0xFEFF) {
+            processedContent = processedContent.substring(1);
+        }
+
+        const lines = processedContent.split(/\r?\n/);
         const parsedLines: ParsedLine[] = [];
 
         for (const line of lines) {

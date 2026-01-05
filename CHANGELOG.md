@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.5.0] - 05/01/2026
+
+### Added
+- Support for `.vscodeignore` files with accurate vsce semantics
+  - Uses minimatch pattern matching (no recursive basename matching)
+  - `*.log` only matches root level; use `**/*.log` for recursive
+  - Auto-expands `folder/` to `folder/**`
+  - Trims all leading and trailing whitespace (unlike gitignore)
+  - No directory blocking for negations (negations always work)
+- Strategy pattern architecture for extensible ignore file support
+- 40 new tests for vscodeignore parsing, matching, counting, and bug fixes
+
+### Fixed
+- Character class directory patterns (`[ab]/`) now treated as wildcards (ISSUE-M007)
+  - Previously stored as literal prefix, blocking negations incorrectly
+  - Now correctly skipped so negations for `a/` or `b/` files work
+- UTF-8 BOM is now stripped from ignore files (ISSUE-M008)
+  - Files saved with BOM on Windows would have first pattern fail to match
+  - BOM is now detected and removed before parsing in all parsers
+- Anchored character class patterns (`/[ab].txt`) now match correctly (ISSUE-M009)
+  - Previously leading `/` was passed to minimatch literally, failing to match
+  - Now stripped and only root-level files are matched
+
 ## [0.4.7] - 04/01/2026
 
 ### Fixed

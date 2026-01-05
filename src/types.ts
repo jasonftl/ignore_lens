@@ -1,5 +1,11 @@
-// Date: 29/11/2025
+// Date: 05/01/2026
 // Common TypeScript interfaces and types for the IgnoreLens extension
+
+/**
+ * The type of ignore file being processed.
+ * Different file types have different parsing and matching semantics.
+ */
+export type IgnoreFileType = 'gitignore' | 'vscodeignore';
 
 /**
  * The type of line in an ignore file.
@@ -49,4 +55,18 @@ export interface IgnoreLensConfig {
     decorationStyle: DecorationStyle;
     /** Debounce delay in milliseconds for rescanning */
     scanDebounceMs: number;
+}
+
+/**
+ * Result of calculating counts for a single pattern.
+ */
+export interface AdvancedCountResult {
+    /** Files added (normal) or removed (negation) */
+    actionCount: number;
+    /** Files already in set (normal) or not in set (negation) */
+    noActionCount: number;
+    /** Files that couldn't be un-ignored due to parent dir */
+    blockedCount: number;
+    /** Current set size after this operation */
+    setSize: number;
 }

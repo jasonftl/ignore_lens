@@ -169,6 +169,24 @@ suite('PatternMatcher Test Suite', () => {
             assert.ok(result.matchingFiles.includes('[special].ts'), 'should match [special].ts literally');
             assert.ok(!result.matchingFiles.includes('s.ts') || !charClassFiles.includes('s.ts'), 'should not treat as character class');
         });
+
+        test('should match anchored character class patterns only at root', () => {
+            // Bug fix ISSUE-M009: /[ab].ts should only match root-level files
+            const result = matcher.findMatches('/[ab].ts', charClassFiles);
+
+            assert.ok(result.matchingFiles.includes('a.ts'), 'should match root a.ts');
+            assert.ok(result.matchingFiles.includes('b.ts'), 'should match root b.ts');
+            assert.ok(!result.matchingFiles.includes('src/a.ts'), 'should NOT match src/a.ts (not at root)');
+        });
+
+        test('testMatch should handle anchored character class patterns', () => {
+            // Bug fix ISSUE-M009: testMatch should also respect anchored patterns
+            const matchesRootA = matcher.testMatch('/[ab].ts', 'a.ts');
+            const matchesNestedA = matcher.testMatch('/[ab].ts', 'src/a.ts');
+
+            assert.strictEqual(matchesRootA, true, '/[ab].ts should match root a.ts');
+            assert.strictEqual(matchesNestedA, false, '/[ab].ts should NOT match src/a.ts');
+        });
     });
 
     suite('escaped special characters', () => {
