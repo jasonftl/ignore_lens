@@ -1,14 +1,14 @@
-// Date: 04/01/2026
-// Unit tests for the IgnoreParser class
+// Date: 05/01/2026
+// Unit tests for the GitignoreParser class
 
 import * as assert from 'assert';
-import { IgnoreParser } from '../../ignoreParser';
+import { GitignoreParser } from '../../parserStrategy';
 
-suite('IgnoreParser Test Suite', () => {
-    let parser: IgnoreParser;
+suite('GitignoreParser Test Suite', () => {
+    let parser: GitignoreParser;
 
     setup(() => {
-        parser = new IgnoreParser();
+        parser = new GitignoreParser();
     });
 
     suite('parseLine', () => {

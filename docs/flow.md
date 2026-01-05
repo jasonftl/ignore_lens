@@ -13,9 +13,9 @@ flowchart TD
     end
 
 
-    D -->|1. parses lines| E["IgnoreParser.parseLine()"]
-    D -->|2. matches patterns| F["PatternMatcher.findMatches()"]
-    D -->|3. calculates counts| H["countCalculator.calculateAdvancedCount()"]
+    D -->|1. parses lines| E["getParser().parseLine()"]
+    D -->|2. matches patterns| F["getMatcher().findMatches()"]
+    D -->|3. calculates counts| H["getCountCalculator().calculateCount()"]
     D -->|4. applies| G["editor.setDecorations()"]
 ```
 
@@ -24,6 +24,6 @@ flowchart TD
 - **extension.ts** - Entry point, registers event handlers
 - **WorkspaceScanner** - Scans workspace for files
 - **DecorationProvider** - Manages line decorations and match counts
-- **IgnoreParser** - Parses ignore file lines (patterns, comments, blanks)
-- **PatternMatcher** - Checks patterns against workspace files
-- **countCalculator** - Calculates set operations (tracks ignored files and blocked directories)
+- **parserStrategy.ts** - Strategy pattern for parsing (GitignoreParser, VscodeignoreParser)
+- **matcherStrategy.ts** - Strategy pattern for matching (GitignoreMatcher, VscodeignoreMatcher)
+- **countStrategy.ts** - Strategy pattern for count calculation (GitignoreCountCalculator, VscodeignoreCountCalculator)

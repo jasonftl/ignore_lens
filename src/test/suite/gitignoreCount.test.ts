@@ -1,10 +1,12 @@
-// Date: 02/12/2025
-// Unit tests for the count calculator functions
+// Date: 05/01/2026
+// Unit tests for the GitignoreCountCalculator class
 
 import * as assert from 'assert';
-import { calculateAdvancedCount, isUnderIgnoredDir } from '../../countCalculator';
+import { GitignoreCountCalculator, isUnderIgnoredDir } from '../../countStrategy';
 
-suite('CountCalculator Test Suite', () => {
+suite('GitignoreCountCalculator Test Suite', () => {
+    // Create a calculator instance for use across tests
+    const calculator = new GitignoreCountCalculator();
 
     suite('isUnderIgnoredDir', () => {
         test('should return true for file under ignored directory', () => {
@@ -29,7 +31,7 @@ suite('CountCalculator Test Suite', () => {
         });
     });
 
-    suite('calculateAdvancedCount', () => {
+    suite('calculateCount', () => {
 
         suite('normal patterns (add to set)', () => {
             test('should add all files when set is empty', () => {
@@ -37,7 +39,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.strictEqual(result.noActionCount, 0);
@@ -52,7 +54,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.strictEqual(result.noActionCount, 1);
@@ -65,7 +67,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js', 'file2.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
 
                 assert.strictEqual(result.actionCount, 0);
                 assert.strictEqual(result.noActionCount, 2);
@@ -78,7 +80,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.ts');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, '*.ts');
 
                 assert.strictEqual(result.actionCount, 0);
                 assert.strictEqual(result.noActionCount, 0);
@@ -91,7 +93,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
+                const result = calculator.calculateCount(matchingFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.ok(ignoredDirs.has('dist/'));
@@ -104,7 +106,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.ok(!ignoredDirs.has('dist/'));  // Should NOT be in ignoredDirs
@@ -117,7 +119,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'build/*');
+                const result = calculator.calculateCount(matchingFiles, false, false, cumulativeSet, ignoredDirs, 'build/*');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.ok(!ignoredDirs.has('build/'));  // Should NOT be in ignoredDirs
@@ -130,7 +132,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js', 'file2.js', 'file3.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
 
                 assert.strictEqual(result.actionCount, 2);
                 assert.strictEqual(result.noActionCount, 0);
@@ -146,7 +148,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
 
                 assert.strictEqual(result.actionCount, 1);
                 assert.strictEqual(result.noActionCount, 2);
@@ -159,7 +161,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.js');
 
                 assert.strictEqual(result.actionCount, 0);
                 assert.strictEqual(result.noActionCount, 2);
@@ -172,7 +174,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['file1.js']);
                 const ignoredDirs = new Set<string>();
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.ts');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!*.ts');
 
                 assert.strictEqual(result.actionCount, 0);
                 assert.strictEqual(result.noActionCount, 0);
@@ -185,7 +187,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['dist/bundle.js', 'dist/index.js']);
                 const ignoredDirs = new Set<string>(['dist/']);
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!dist/*.js');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!dist/*.js');
 
                 assert.strictEqual(result.actionCount, 0);
                 assert.strictEqual(result.noActionCount, 0);
@@ -201,7 +203,7 @@ suite('CountCalculator Test Suite', () => {
                 const cumulativeSet = new Set<string>(['src/app.js', 'dist/bundle.js']);
                 const ignoredDirs = new Set<string>(['dist/']);
 
-                const result = calculateAdvancedCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!src/app.js');
+                const result = calculator.calculateCount(matchingFiles, true, false, cumulativeSet, ignoredDirs, '!src/app.js');
 
                 assert.strictEqual(result.actionCount, 1);
                 assert.strictEqual(result.noActionCount, 0);
@@ -216,7 +218,7 @@ suite('CountCalculator Test Suite', () => {
                 const ignoredDirs = new Set<string>(['dist/']);
 
                 // Negation directory pattern !dist/ should remove dist/ from ignoredDirs
-                const result = calculateAdvancedCount(matchingFiles, true, true, cumulativeSet, ignoredDirs, '!dist/');
+                const result = calculator.calculateCount(matchingFiles, true, true, cumulativeSet, ignoredDirs, '!dist/');
 
                 // After removing from ignoredDirs, files can be un-ignored
                 assert.strictEqual(result.actionCount, 2);
@@ -233,7 +235,7 @@ suite('CountCalculator Test Suite', () => {
                 const ignoredDirs = new Set<string>(['empty/']);
 
                 // Negation directory pattern !empty/ should remove empty/ from ignoredDirs
-                const result = calculateAdvancedCount(matchingFiles, true, true, cumulativeSet, ignoredDirs, '!empty/');
+                const result = calculator.calculateCount(matchingFiles, true, true, cumulativeSet, ignoredDirs, '!empty/');
 
                 // Directory should be removed from ignoredDirs even with no matching files
                 assert.strictEqual(result.actionCount, 0);
@@ -260,7 +262,7 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: node_modules/ matches 2 files - adds both
                 const nodeModulesFiles = allFiles.filter(f => f.startsWith('node_modules/'));
-                const result1 = calculateAdvancedCount(nodeModulesFiles, false, true, cumulativeSet, ignoredDirs, 'node_modules/');
+                const result1 = calculator.calculateCount(nodeModulesFiles, false, true, cumulativeSet, ignoredDirs, 'node_modules/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.noActionCount, 0);
                 assert.strictEqual(result1.setSize, 2);
@@ -268,14 +270,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 2: *.js matches 4 files - 1 already in set, 3 added
                 const jsFiles = allFiles.filter(f => f.endsWith('.js'));
-                const result2 = calculateAdvancedCount(jsFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
+                const result2 = calculator.calculateCount(jsFiles, false, false, cumulativeSet, ignoredDirs, '*.js');
                 assert.strictEqual(result2.actionCount, 3);
                 assert.strictEqual(result2.noActionCount, 1);
                 assert.strictEqual(result2.setSize, 5);
 
                 // Pattern 3: !important.js - removes 1 file from set (not under ignored dir)
                 const importantFiles = ['important.js'];
-                const result3 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!important.js');
+                const result3 = calculator.calculateCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!important.js');
                 assert.strictEqual(result3.actionCount, 1);
                 assert.strictEqual(result3.noActionCount, 0);
                 assert.strictEqual(result3.blockedCount, 0);
@@ -284,14 +286,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 4: *.ts matches 2 files - adds both
                 const tsFiles = allFiles.filter(f => f.endsWith('.ts'));
-                const result4 = calculateAdvancedCount(tsFiles, false, false, cumulativeSet, ignoredDirs, '*.ts');
+                const result4 = calculator.calculateCount(tsFiles, false, false, cumulativeSet, ignoredDirs, '*.ts');
                 assert.strictEqual(result4.actionCount, 2);
                 assert.strictEqual(result4.noActionCount, 0);
                 assert.strictEqual(result4.setSize, 6);
 
                 // Pattern 5: !config.ts - removes 1 file from set
                 const configFiles = ['config.ts'];
-                const result5 = calculateAdvancedCount(configFiles, true, false, cumulativeSet, ignoredDirs, '!config.ts');
+                const result5 = calculator.calculateCount(configFiles, true, false, cumulativeSet, ignoredDirs, '!config.ts');
                 assert.strictEqual(result5.actionCount, 1);
                 assert.strictEqual(result5.noActionCount, 0);
                 assert.strictEqual(result5.setSize, 5);
@@ -308,14 +310,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: dist/ matches files - directory pattern
                 const distFiles = ['dist/bundle.js', 'dist/important.js'];
-                const result1 = calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
+                const result1 = calculator.calculateCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
                 assert.ok(ignoredDirs.has('dist/'));
 
                 // Pattern 2: !dist/important.js - should be blocked
                 const importantFiles = ['dist/important.js'];
-                const result2 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/important.js');
+                const result2 = calculator.calculateCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/important.js');
                 assert.strictEqual(result2.actionCount, 0);
                 assert.strictEqual(result2.blockedCount, 1);
                 assert.strictEqual(result2.setSize, 2);
@@ -332,14 +334,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: dist/** matches files but does NOT add to ignoredDirs
                 const distFiles = ['dist/bundle.js', 'dist/sub/important.js'];
-                const result1 = calculateAdvancedCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
+                const result1 = calculator.calculateCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/**');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
                 assert.ok(!ignoredDirs.has('dist/'));  // NOT in ignoredDirs
 
                 // Pattern 2: !dist/sub/important.js - should NOT be blocked
                 const importantFiles = ['dist/sub/important.js'];
-                const result2 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/sub/important.js');
+                const result2 = calculator.calculateCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/sub/important.js');
                 assert.strictEqual(result2.actionCount, 1);  // Successfully removed
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 1);
@@ -352,13 +354,13 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: dist/ matches files - explicit directory pattern adds to ignoredDirs
                 const distFiles = ['dist/bundle.js', 'dist/sub/important.js'];
-                const result1 = calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
+                const result1 = calculator.calculateCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
                 assert.ok(ignoredDirs.has('dist/'));  // Only dir/ adds to ignoredDirs
 
                 // Pattern 2: !dist/** should clear dist/ from ignoredDirs and remove files
-                const result2 = calculateAdvancedCount(distFiles, true, false, cumulativeSet, ignoredDirs, '!dist/**');
+                const result2 = calculator.calculateCount(distFiles, true, false, cumulativeSet, ignoredDirs, '!dist/**');
                 assert.ok(!ignoredDirs.has('dist/'));  // dist/ should be removed from ignoredDirs
                 assert.strictEqual(result2.actionCount, 2);  // Files should be removed from set
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
@@ -373,13 +375,13 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: dist/* matches files but does NOT add to ignoredDirs
                 const distFiles = ['dist/bundle.js', 'dist/important.js'];
-                const result1 = calculateAdvancedCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/*');
+                const result1 = calculator.calculateCount(distFiles, false, false, cumulativeSet, ignoredDirs, 'dist/*');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.ok(!ignoredDirs.has('dist/'));  // NOT in ignoredDirs
 
                 // Pattern 2: !dist/important.js should NOT be blocked
                 const importantFiles = ['dist/important.js'];
-                const result2 = calculateAdvancedCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/important.js');
+                const result2 = calculator.calculateCount(importantFiles, true, false, cumulativeSet, ignoredDirs, '!dist/important.js');
                 assert.strictEqual(result2.actionCount, 1);  // Successfully removed
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 1);
@@ -392,19 +394,19 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: dist/ ignores the directory
                 const distFiles = ['dist/bundle.js', 'dist/important.js'];
-                calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
+                calculator.calculateCount(distFiles, false, true, cumulativeSet, ignoredDirs, 'dist/');
                 assert.ok(ignoredDirs.has('dist/'));
                 assert.strictEqual(cumulativeSet.size, 2);
 
                 // Pattern 2: !dist/ un-ignores the directory
-                const result2 = calculateAdvancedCount(distFiles, true, true, cumulativeSet, ignoredDirs, '!dist/');
+                const result2 = calculator.calculateCount(distFiles, true, true, cumulativeSet, ignoredDirs, '!dist/');
                 assert.ok(!ignoredDirs.has('dist/'));
                 assert.strictEqual(result2.actionCount, 2);
                 assert.strictEqual(cumulativeSet.size, 0);
 
                 // Pattern 3: dist/secret.js can now be added without blocking
                 const secretFiles = ['dist/secret.js'];
-                const result3 = calculateAdvancedCount(secretFiles, false, false, cumulativeSet, ignoredDirs, 'dist/secret.js');
+                const result3 = calculator.calculateCount(secretFiles, false, false, cumulativeSet, ignoredDirs, 'dist/secret.js');
                 assert.strictEqual(result3.actionCount, 1);
                 assert.strictEqual(cumulativeSet.size, 1);
             });
@@ -418,13 +420,13 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: \[tmp\]/ ignores the literal directory [tmp]/
                 const tmpFiles = ['[tmp]/file1.txt', '[tmp]/sub/file2.txt'];
-                calculateAdvancedCount(tmpFiles, false, true, cumulativeSet, ignoredDirs, '\\[tmp\\]/');
+                calculator.calculateCount(tmpFiles, false, true, cumulativeSet, ignoredDirs, '\\[tmp\\]/');
                 // Stored as unescaped form: [tmp]/
                 assert.ok(ignoredDirs.has('[tmp]/'));
                 assert.strictEqual(cumulativeSet.size, 2);
 
                 // Pattern 2: !\[tmp\]/** should clear [tmp]/ from ignoredDirs
-                const result2 = calculateAdvancedCount(tmpFiles, true, false, cumulativeSet, ignoredDirs, '!\\[tmp\\]/**');
+                const result2 = calculator.calculateCount(tmpFiles, true, false, cumulativeSet, ignoredDirs, '!\\[tmp\\]/**');
                 assert.ok(!ignoredDirs.has('[tmp]/'));  // Should be removed
                 assert.strictEqual(result2.actionCount, 2);  // Files should be removed from set
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
@@ -439,13 +441,13 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: node_modules/**/ should NOT add to ignoredDirs
                 const nodeFiles = ['node_modules/lodash/index.js', 'node_modules/ignore/index.js'];
-                const result1 = calculateAdvancedCount(nodeFiles, false, true, cumulativeSet, ignoredDirs, 'node_modules/**/');
+                const result1 = calculator.calculateCount(nodeFiles, false, true, cumulativeSet, ignoredDirs, 'node_modules/**/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.ok(!ignoredDirs.has('node_modules/'));  // Should NOT be in ignoredDirs
 
                 // Pattern 2: !node_modules/ignore/ should NOT be blocked
                 const ignoreFiles = ['node_modules/ignore/index.js'];
-                const result2 = calculateAdvancedCount(ignoreFiles, true, true, cumulativeSet, ignoredDirs, '!node_modules/ignore/');
+                const result2 = calculator.calculateCount(ignoreFiles, true, true, cumulativeSet, ignoredDirs, '!node_modules/ignore/');
                 assert.strictEqual(result2.actionCount, 1);  // Successfully removed
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
                 assert.strictEqual(result2.setSize, 1);
@@ -458,7 +460,7 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern: src/vendor/ should store "src/vendor/", not "src/"
                 const vendorFiles = ['src/vendor/lib.js', 'src/vendor/util.js'];
-                calculateAdvancedCount(vendorFiles, false, true, cumulativeSet, ignoredDirs, 'src/vendor/');
+                calculator.calculateCount(vendorFiles, false, true, cumulativeSet, ignoredDirs, 'src/vendor/');
 
                 // Should have "src/vendor/" in ignoredDirs, NOT "src/"
                 assert.ok(ignoredDirs.has('src/vendor/'));
@@ -478,7 +480,7 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern: /dist/ (anchored) should store "dist/"
                 const distFiles = ['dist/bundle.js'];
-                calculateAdvancedCount(distFiles, false, true, cumulativeSet, ignoredDirs, '/dist/');
+                calculator.calculateCount(distFiles, false, true, cumulativeSet, ignoredDirs, '/dist/');
 
                 // Should have "dist/" in ignoredDirs, NOT "/dist/"
                 assert.ok(ignoredDirs.has('dist/'));
@@ -492,7 +494,7 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern: !/dist/ should delete "dist/" from ignoredDirs
                 const distFiles = ['dist/important.js'];
-                const result = calculateAdvancedCount(distFiles, true, true, cumulativeSet, ignoredDirs, '!/dist/');
+                const result = calculator.calculateCount(distFiles, true, true, cumulativeSet, ignoredDirs, '!/dist/');
 
                 // ignoredDirs should be empty now
                 assert.strictEqual(ignoredDirs.size, 0);
@@ -509,14 +511,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: \[temp\]/ ignores the directory (escaped brackets)
                 const tempFiles = ['[temp]/cache.tmp', '[temp]/data.tmp'];
-                const result1 = calculateAdvancedCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
+                const result1 = calculator.calculateCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
                 // Should store "[temp]/" (unescaped) in ignoredDirs
                 assert.ok(ignoredDirs.has('[temp]/'));
 
                 // Pattern 2: !\[temp\]/*.tmp should be BLOCKED
-                const result2 = calculateAdvancedCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/*.tmp');
+                const result2 = calculator.calculateCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/*.tmp');
                 assert.strictEqual(result2.actionCount, 0);  // Nothing removed
                 assert.strictEqual(result2.blockedCount, 2);  // Both blocked
                 assert.strictEqual(result2.setSize, 2);  // Set unchanged
@@ -529,14 +531,14 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern: dir\*/ is a directory named "dir*" (literal asterisk)
                 const starDirFiles = ['dir*/file.txt', 'dir*/sub/file2.txt'];
-                const result1 = calculateAdvancedCount(starDirFiles, false, true, cumulativeSet, ignoredDirs, 'dir\\*/');
+                const result1 = calculator.calculateCount(starDirFiles, false, true, cumulativeSet, ignoredDirs, 'dir\\*/');
                 assert.strictEqual(result1.actionCount, 2);
                 assert.strictEqual(result1.setSize, 2);
                 // Should store "dir*/" (unescaped) in ignoredDirs - NOT treated as glob
                 assert.ok(ignoredDirs.has('dir*/'));
 
                 // Negation should be blocked
-                const result2 = calculateAdvancedCount(starDirFiles, true, false, cumulativeSet, ignoredDirs, '!dir\\*/*.txt');
+                const result2 = calculator.calculateCount(starDirFiles, true, false, cumulativeSet, ignoredDirs, '!dir\\*/*.txt');
                 assert.strictEqual(result2.blockedCount, 2);  // Both blocked
             });
 
@@ -547,12 +549,12 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: \[temp\]/ adds to ignoredDirs
                 const tempFiles = ['[temp]/file1.txt', '[temp]/file2.txt'];
-                calculateAdvancedCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
+                calculator.calculateCount(tempFiles, false, true, cumulativeSet, ignoredDirs, '\\[temp\\]/');
                 assert.ok(ignoredDirs.has('[temp]/'));
                 assert.strictEqual(cumulativeSet.size, 2);
 
                 // Pattern 2: !\[temp\]/** should clear [temp]/ from ignoredDirs and un-ignore
-                const result2 = calculateAdvancedCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/**');
+                const result2 = calculator.calculateCount(tempFiles, true, false, cumulativeSet, ignoredDirs, '!\\[temp\\]/**');
                 assert.ok(!ignoredDirs.has('[temp]/'));  // Should be removed
                 assert.strictEqual(result2.actionCount, 2);  // Files un-ignored
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
@@ -567,7 +569,7 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern: [ab]/ is a glob pattern matching directories a/ or b/
                 const files = ['a/file.txt', 'b/file.txt'];
-                calculateAdvancedCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
 
                 // Should NOT store '[ab]/' as literal prefix (it's a wildcard pattern)
                 assert.ok(!ignoredDirs.has('[ab]/'));
@@ -582,13 +584,13 @@ suite('CountCalculator Test Suite', () => {
 
                 // Pattern 1: [ab]/ matches a/ and b/
                 const files = ['a/file.txt', 'b/file.txt'];
-                calculateAdvancedCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
                 assert.strictEqual(cumulativeSet.size, 2);
                 // ignoredDirs should be empty (pattern is a wildcard)
                 assert.strictEqual(ignoredDirs.size, 0);
 
                 // Pattern 2: !a/file.txt should work (not blocked)
-                const result2 = calculateAdvancedCount(['a/file.txt'], true, false, cumulativeSet, ignoredDirs, '!a/file.txt');
+                const result2 = calculator.calculateCount(['a/file.txt'], true, false, cumulativeSet, ignoredDirs, '!a/file.txt');
                 assert.strictEqual(result2.actionCount, 1);  // Successfully removed
                 assert.strictEqual(result2.blockedCount, 0);  // Not blocked
             });

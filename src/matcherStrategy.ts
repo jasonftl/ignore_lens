@@ -42,7 +42,7 @@ function needsMinimatchFallback(pattern: string): boolean {
 /**
  * Matches files using minimatch for character class patterns.
  * Uses matchBase option so patterns match anywhere in the path (gitignore behaviour).
- * Handles anchored patterns (leading /) by restricting matches to root-level files.
+ * Handles anchored patterns (leading /) by matching from the root.
  *
  * @param pattern - The gitignore pattern (without negation prefix)
  * @param files - Array of file paths to match against
@@ -52,21 +52,34 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
     const matchingFiles: string[] = [];
 
     // ISSUE-M009 fix: Handle anchored patterns (leading /)
-    // Git treats /pattern as matching only at root level
+    // Git treats /pattern as matching from the root
     const isAnchored = pattern.startsWith('/');
     const cleanPattern = isAnchored ? pattern.substring(1) : pattern;
 
+    // ISSUE-M012 fix: Check if anchored pattern contains subpath
+    // /[ab].txt should only match root-level files
+    // /[ab]/file.txt should match a/file.txt or b/file.txt
+    const anchoredHasSubpath = isAnchored && cleanPattern.includes('/');
+
     for (const file of files) {
-        // For anchored patterns, only match root-level files (no / in path)
         if (isAnchored) {
-            const isRootLevel = !file.includes('/');
-            if (!isRootLevel) {
-                continue;  // Skip non-root files for anchored patterns
-            }
-            // Match against cleaned pattern (without leading /)
-            const matches = minimatch(file, cleanPattern);
-            if (matches) {
-                matchingFiles.push(file);
+            if (anchoredHasSubpath) {
+                // Pattern has subpath structure, match against full path
+                const matches = minimatch(file, cleanPattern);
+                if (matches) {
+                    matchingFiles.push(file);
+                }
+            } else {
+                // Pattern has no subpath, only match root-level files (no / in path)
+                const isRootLevel = !file.includes('/');
+                if (!isRootLevel) {
+                    continue;  // Skip non-root files for simple anchored patterns
+                }
+                // Match against cleaned pattern (without leading /)
+                const matches = minimatch(file, cleanPattern);
+                if (matches) {
+                    matchingFiles.push(file);
+                }
             }
         } else {
             // Non-anchored: try matching with matchBase (pattern matches basename)
@@ -147,12 +160,19 @@ export class GitignoreMatcher implements IPatternMatcher {
             const isAnchored = cleanPattern.startsWith('/');
             if (isAnchored) {
                 cleanPattern = cleanPattern.substring(1);
-                // Anchored patterns only match root-level files
-                const isRootLevel = !filePath.includes('/');
-                if (!isRootLevel) {
-                    return false;
+                // ISSUE-M012 fix: Check if anchored pattern contains subpath
+                const anchoredHasSubpath = cleanPattern.includes('/');
+                if (anchoredHasSubpath) {
+                    // Pattern has subpath structure, match against full path
+                    return minimatch(filePath, cleanPattern);
+                } else {
+                    // Pattern has no subpath, only match root-level files
+                    const isRootLevel = !filePath.includes('/');
+                    if (!isRootLevel) {
+                        return false;
+                    }
+                    return minimatch(filePath, cleanPattern);
                 }
-                return minimatch(filePath, cleanPattern);
             }
 
             // Non-anchored: use minimatch for character class patterns like [a].ts

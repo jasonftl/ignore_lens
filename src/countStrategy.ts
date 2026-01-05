@@ -26,7 +26,7 @@ export interface ICountCalculator {
  * @param ignoredDirs - Set of ignored directory prefixes
  * @returns True if the file is under an ignored directory
  */
-function isUnderIgnoredDir(filePath: string, ignoredDirs: Set<string>): boolean {
+export function isUnderIgnoredDir(filePath: string, ignoredDirs: Set<string>): boolean {
     for (const dir of ignoredDirs) {
         if (filePath.startsWith(dir)) {
             return true;

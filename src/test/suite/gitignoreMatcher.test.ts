@@ -1,11 +1,11 @@
-// Date: 04/01/2026
-// Unit tests for the PatternMatcher class
+// Date: 05/01/2026
+// Unit tests for the GitignoreMatcher class
 
 import * as assert from 'assert';
-import { PatternMatcher } from '../../patternMatcher';
+import { GitignoreMatcher } from '../../matcherStrategy';
 
-suite('PatternMatcher Test Suite', () => {
-    let matcher: PatternMatcher;
+suite('GitignoreMatcher Test Suite', () => {
+    let matcher: GitignoreMatcher;
 
     // Sample file list for testing
     const testFiles = [
@@ -23,7 +23,7 @@ suite('PatternMatcher Test Suite', () => {
     ];
 
     setup(() => {
-        matcher = new PatternMatcher();
+        matcher = new GitignoreMatcher();
     });
 
     suite('findMatches', () => {
@@ -186,6 +186,34 @@ suite('PatternMatcher Test Suite', () => {
 
             assert.strictEqual(matchesRootA, true, '/[ab].ts should match root a.ts');
             assert.strictEqual(matchesNestedA, false, '/[ab].ts should NOT match src/a.ts');
+        });
+
+        test('should match anchored character class patterns with subpaths', () => {
+            // Bug fix ISSUE-M012: /[ab]/file.ts should match a/file.ts and b/file.ts
+            const subpathFiles = [
+                'a/file.ts',
+                'b/file.ts',
+                'c/file.ts',
+                'a.ts',
+                'file.ts'
+            ];
+            const result = matcher.findMatches('/[ab]/file.ts', subpathFiles);
+
+            assert.ok(result.matchingFiles.includes('a/file.ts'), 'should match a/file.ts');
+            assert.ok(result.matchingFiles.includes('b/file.ts'), 'should match b/file.ts');
+            assert.ok(!result.matchingFiles.includes('c/file.ts'), 'should NOT match c/file.ts');
+            assert.ok(!result.matchingFiles.includes('a.ts'), 'should NOT match a.ts');
+        });
+
+        test('testMatch should handle anchored character class patterns with subpaths', () => {
+            // Bug fix ISSUE-M012: testMatch for anchored patterns with subpaths
+            const matchesA = matcher.testMatch('/[ab]/file.ts', 'a/file.ts');
+            const matchesB = matcher.testMatch('/[ab]/file.ts', 'b/file.ts');
+            const matchesC = matcher.testMatch('/[ab]/file.ts', 'c/file.ts');
+
+            assert.strictEqual(matchesA, true, '/[ab]/file.ts should match a/file.ts');
+            assert.strictEqual(matchesB, true, '/[ab]/file.ts should match b/file.ts');
+            assert.strictEqual(matchesC, false, '/[ab]/file.ts should NOT match c/file.ts');
         });
     });
 

@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Support for `.prettierignore` files (uses same semantics as .gitignore)
 
+### Changed
+- Consolidated duplicate parser, matcher, and count calculator modules (ISSUE-M010)
+  - Removed legacy `ignoreParser.ts`, `patternMatcher.ts`, `countCalculator.ts`
+  - Tests now directly cover production strategy classes
+  - Renamed test files for consistency (`gitignoreParser.test.ts`, etc.)
+
+### Fixed
+- Anchored character class patterns with subpaths now match correctly (ISSUE-M012)
+  - `/[ab]/file.txt` now matches `a/file.txt` and `b/file.txt`
+  - Simple anchored patterns like `/[ab].txt` still match root-level only
+
 ## [0.5.0] - 05/01/2026
 
 ### Added
