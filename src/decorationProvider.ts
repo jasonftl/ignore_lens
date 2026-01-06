@@ -9,6 +9,7 @@ import { getLogger } from './logger';
 import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
+import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
 
 /**
  * Provides line decorations for ignore files.
@@ -17,6 +18,9 @@ import { getCountCalculator, ICountCalculator } from './countStrategy';
 export class DecorationProvider implements vscode.Disposable {
     private noMatchDecorationType: vscode.TextEditorDecorationType | undefined;
     private matchCountDecorationType: vscode.TextEditorDecorationType | undefined;
+    // Stale decoration types for cached data (darker colours)
+    private staleNoMatchDecorationType: vscode.TextEditorDecorationType | undefined;
+    private staleMatchCountDecorationType: vscode.TextEditorDecorationType | undefined;
     private updateTimeout: NodeJS.Timeout | undefined;
     private updateVersion: number = 0;
     private currentStyle: DecorationStyle;
@@ -109,6 +113,7 @@ export class DecorationProvider implements vscode.Disposable {
 
     /**
      * Creates decoration types based on the current style setting.
+     * Creates both normal and stale (darker) versions for cached data display.
      */
     private createDecorationTypes(): void {
         // Dispose existing decoration types
@@ -118,33 +123,46 @@ export class DecorationProvider implements vscode.Disposable {
         if (this.matchCountDecorationType) {
             this.matchCountDecorationType.dispose();
         }
+        if (this.staleNoMatchDecorationType) {
+            this.staleNoMatchDecorationType.dispose();
+        }
+        if (this.staleMatchCountDecorationType) {
+            this.staleMatchCountDecorationType.dispose();
+        }
 
         const style = this.currentStyle;
 
         // No decorations if style is 'none'
         if (style === 'none') {
             this.noMatchDecorationType = undefined;
+            this.staleNoMatchDecorationType = undefined;
         } else {
             // Build decoration options based on style (only for no-match patterns)
             const noMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
+            const staleNoMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
 
             if (style === 'background' || style === 'both') {
                 noMatchOptions.backgroundColor = { id: 'ignorelens.noMatchBackground' };
+                staleNoMatchOptions.backgroundColor = { id: 'ignorelens.staleNoMatchBackground' };
             }
 
             if (style === 'text' || style === 'both') {
                 noMatchOptions.color = { id: 'ignorelens.noMatchForeground' };
+                staleNoMatchOptions.color = { id: 'ignorelens.staleNoMatchForeground' };
             }
 
-            // Create the decoration type
+            // Create the decoration types (normal and stale)
             this.noMatchDecorationType = vscode.window.createTextEditorDecorationType(noMatchOptions);
+            this.staleNoMatchDecorationType = vscode.window.createTextEditorDecorationType(staleNoMatchOptions);
         }
 
-        // Create match count decoration type (renders count after line)
+        // Create match count decoration types (renders count after line)
         if (this.showMatchCount) {
             this.matchCountDecorationType = vscode.window.createTextEditorDecorationType({});
+            this.staleMatchCountDecorationType = vscode.window.createTextEditorDecorationType({});
         } else {
             this.matchCountDecorationType = undefined;
+            this.staleMatchCountDecorationType = undefined;
         }
     }
 
@@ -186,13 +204,19 @@ export class DecorationProvider implements vscode.Disposable {
         const config = vscode.workspace.getConfiguration('ignorelens');
         const enabled = config.get<boolean>('enabled', true);
 
-        // Clear decorations if disabled
+        // Clear all decorations (normal and stale) if disabled
         if (!enabled) {
             if (this.noMatchDecorationType) {
                 editor.setDecorations(this.noMatchDecorationType, []);
             }
             if (this.matchCountDecorationType) {
                 editor.setDecorations(this.matchCountDecorationType, []);
+            }
+            if (this.staleNoMatchDecorationType) {
+                editor.setDecorations(this.staleNoMatchDecorationType, []);
+            }
+            if (this.staleMatchCountDecorationType) {
+                editor.setDecorations(this.staleMatchCountDecorationType, []);
             }
             return;
         }
@@ -203,6 +227,16 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         const document = editor.document;
+        const documentUri = document.uri.toString();
+
+        // Phase 1: Check cache and show stale decorations immediately
+        const cacheResult = decorationCache.get(documentUri);
+        if (cacheResult) {
+            // Apply cached data with stale (darker) colours for instant feedback
+            this.applyDecorationsFromData(editor, cacheResult.data, true);
+            const logger = getLogger();
+            logger.log('Showing cached decorations (stale) while refreshing...');
+        }
 
         // Detect file type and get appropriate strategies
         const fileType = this.detectFileType(document);
@@ -215,6 +249,19 @@ export class DecorationProvider implements vscode.Disposable {
         // Get the workspace folder containing this ignore file
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (!workspaceFolder) {
+            // Clear all decorations (stale decorations may have been applied above)
+            if (this.noMatchDecorationType) {
+                editor.setDecorations(this.noMatchDecorationType, []);
+            }
+            if (this.matchCountDecorationType) {
+                editor.setDecorations(this.matchCountDecorationType, []);
+            }
+            if (this.staleNoMatchDecorationType) {
+                editor.setDecorations(this.staleNoMatchDecorationType, []);
+            }
+            if (this.staleMatchCountDecorationType) {
+                editor.setDecorations(this.staleMatchCountDecorationType, []);
+            }
             return;
         }
 
@@ -363,6 +410,17 @@ export class DecorationProvider implements vscode.Disposable {
         const summaryText = 'Summary (' + ignoreFileName + '): ' + workspaceFiles.length + ' files, ' + finalSetSize + ' ignored, ≡' + totalShadowed + ' shadowed, ∅' + totalNotInSet + ' not in set, ✗' + totalBlocked + ' blocked';
         logger.log(summaryText);
 
+        // Store fresh data to cache (overwrites any stale data)
+        const cachedData: CachedDecorations = {
+            lineData: lineData,
+            maxLineLength: maxLineLength,
+            maxCol1Width: maxCol1Width,
+            maxCol2Width: maxCol2Width,
+            maxCol3Width: maxCol3Width,
+            timestamp: Date.now()
+        };
+        decorationCache.set(documentUri, cachedData);
+
         // Second pass: create decorations with aligned counts
         for (const data of lineData) {
             const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
@@ -433,6 +491,14 @@ export class DecorationProvider implements vscode.Disposable {
             return;
         }
 
+        // Phase 2: Clear stale decorations and apply fresh ones with normal colours
+        if (this.staleNoMatchDecorationType) {
+            editor.setDecorations(this.staleNoMatchDecorationType, []);
+        }
+        if (this.staleMatchCountDecorationType) {
+            editor.setDecorations(this.staleMatchCountDecorationType, []);
+        }
+
         // Apply decorations
         if (this.noMatchDecorationType) {
             editor.setDecorations(this.noMatchDecorationType, noMatchDecorations);
@@ -441,7 +507,107 @@ export class DecorationProvider implements vscode.Disposable {
             editor.setDecorations(this.matchCountDecorationType, matchCountDecorations);
         }
 
-        logger.log('Decoration update complete');
+        logger.log('Decoration update complete (fresh data applied)');
+    }
+
+    /**
+     * Applies decorations from cached data.
+     * Used to show stale (darker) decorations while refreshing in background.
+     *
+     * @param editor - The text editor to apply decorations to
+     * @param cachedData - The cached decoration data
+     * @param isStale - Whether to use stale (darker) decoration colours
+     */
+    private applyDecorationsFromData(editor: vscode.TextEditor, cachedData: CachedDecorations, isStale: boolean): void {
+        const document = editor.document;
+        const { lineData, maxLineLength, maxCol1Width, maxCol2Width, maxCol3Width } = cachedData;
+
+        const noMatchDecorations: vscode.DecorationOptions[] = [];
+        const matchCountDecorations: vscode.DecorationOptions[] = [];
+
+        // Select decoration types based on stale flag
+        const noMatchType = isStale ? this.staleNoMatchDecorationType : this.noMatchDecorationType;
+        const matchCountType = isStale ? this.staleMatchCountDecorationType : this.matchCountDecorationType;
+
+        // Build decorations from cached line data
+        for (const data of lineData) {
+            const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
+
+            // Check line still exists in document
+            if (lineIndex >= document.lineCount) {
+                continue;
+            }
+
+            const line = document.lineAt(lineIndex);
+
+            // Add match count decoration at end of line if enabled
+            if (this.showMatchCount && matchCountType) {
+                const range = line.range;
+
+                // Compact three-column format with Unicode symbols
+                const nbsp = '\u00A0';
+                const col1Padded = col1 + nbsp.repeat(maxCol1Width - col1.length);
+                const col3Padded = col3 + nbsp.repeat(maxCol3Width - col3.length);
+                const countText = col1Padded + nbsp + nbsp + col3Padded + nbsp + nbsp + col2;
+
+                // Set colour based on pattern type (using stale colours if isStale)
+                let countColour: { id: string };
+                if (isNegation) {
+                    countColour = { id: isStale ? 'ignorelens.staleNegationForeground' : 'ignorelens.negationForeground' };
+                } else {
+                    if (actionCount > 0) {
+                        countColour = { id: isStale ? 'ignorelens.staleMatchCountForeground' : 'ignorelens.matchCountForeground' };
+                    } else if (noActionCount > 0) {
+                        countColour = { id: isStale ? 'ignorelens.staleNegationForeground' : 'ignorelens.negationForeground' };
+                    } else {
+                        countColour = { id: isStale ? 'ignorelens.staleNoMatchForeground' : 'ignorelens.noMatchForeground' };
+                    }
+                }
+
+                const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
+                const countDecoration: vscode.DecorationOptions = {
+                    range: range,
+                    renderOptions: {
+                        after: {
+                            contentText: padding + countText,
+                            color: countColour,
+                            fontStyle: 'italic'
+                        }
+                    }
+                };
+                matchCountDecorations.push(countDecoration);
+            }
+
+            // Check for truly redundant patterns
+            const isTrulyRedundant = !isNegation && actionCount === 0 && noActionCount === 0;
+            if (isTrulyRedundant && noMatchType && this.currentStyle !== 'none') {
+                const range = line.range;
+                const decoration: vscode.DecorationOptions = { range };
+                noMatchDecorations.push(decoration);
+            }
+        }
+
+        // Clear existing decorations first (both stale and normal)
+        if (this.noMatchDecorationType) {
+            editor.setDecorations(this.noMatchDecorationType, []);
+        }
+        if (this.staleNoMatchDecorationType) {
+            editor.setDecorations(this.staleNoMatchDecorationType, []);
+        }
+        if (this.matchCountDecorationType) {
+            editor.setDecorations(this.matchCountDecorationType, []);
+        }
+        if (this.staleMatchCountDecorationType) {
+            editor.setDecorations(this.staleMatchCountDecorationType, []);
+        }
+
+        // Apply the appropriate decorations
+        if (noMatchType) {
+            editor.setDecorations(noMatchType, noMatchDecorations);
+        }
+        if (matchCountType) {
+            editor.setDecorations(matchCountType, matchCountDecorations);
+        }
     }
 
     /**
@@ -488,6 +654,14 @@ export class DecorationProvider implements vscode.Disposable {
 
         if (this.matchCountDecorationType) {
             this.matchCountDecorationType.dispose();
+        }
+
+        if (this.staleNoMatchDecorationType) {
+            this.staleNoMatchDecorationType.dispose();
+        }
+
+        if (this.staleMatchCountDecorationType) {
+            this.staleMatchCountDecorationType.dispose();
         }
 
         if (this.updateTimeout) {

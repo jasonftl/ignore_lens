@@ -65,6 +65,42 @@
           "light": "#996600",
           "highContrast": "#FFCC00"
         }
+      },
+      {
+        "id": "ignorelens.staleMatchCountForeground",
+        "description": "Text colour for stale/cached match counts (darker green)",
+        "defaults": {
+          "dark": "#3d5c30",
+          "light": "#004d00",
+          "highContrast": "#3d5c30"
+        }
+      },
+      {
+        "id": "ignorelens.staleNoMatchForeground",
+        "description": "Text colour for stale/cached no-match patterns (darker red)",
+        "defaults": {
+          "dark": "#8b2020",
+          "light": "#8b1a1a",
+          "highContrast": "#8b2020"
+        }
+      },
+      {
+        "id": "ignorelens.staleNoMatchBackground",
+        "description": "Background colour for stale/cached no-match patterns (darker red)",
+        "defaults": {
+          "dark": "#2a0a0a40",
+          "light": "#8b6c6c40",
+          "highContrast": "#4a000030"
+        }
+      },
+      {
+        "id": "ignorelens.staleNegationForeground",
+        "description": "Text colour for stale/cached negation counts (darker yellow)",
+        "defaults": {
+          "dark": "#7a6600",
+          "light": "#664400",
+          "highContrast": "#7a6600"
+        }
       }
     ],
     "configuration": {

@@ -34,8 +34,10 @@ function needsMinimatchFallback(pattern: string): boolean {
         return true;
     }
 
-    // For non-negated patterns with wildcards, ignore package handles it fine
-    if (cleanPattern.includes('*')) {
+    // For non-negated patterns with unescaped wildcards, ignore package handles it fine
+    // Must check for unescaped * (not preceded by \)
+    const hasUnescapedWildcard = /(?<!\\)\*/.test(cleanPattern);
+    if (hasUnescapedWildcard) {
         return false;
     }
 

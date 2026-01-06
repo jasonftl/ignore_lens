@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Instant cached decorations on tab switch with stale indicator
+  - When switching to an ignore file, cached data displays immediately in darker colours
+  - Background refresh runs and swaps to normal colours when complete
+  - Eliminates perceived delay on tab switch for large workspaces
+- New theme colours for stale/cached state:
+  - `ignorelens.staleMatchCountForeground` (darker green)
+  - `ignorelens.staleNoMatchForeground` (darker red)
+  - `ignorelens.staleNoMatchBackground` (darker red background)
+  - `ignorelens.staleNegationForeground` (darker yellow)
+
+### Fixed
+- Stale decorations now cleared when disabling IgnoreLens via settings (ISSUE-M013)
+- Decorations now cleared for ignore files outside a workspace folder (ISSUE-L010)
+- Escaped wildcards no longer bypass minimatch fallback for character class patterns (ISSUE-L013)
+
 ## [0.6.1] - 05/01/2026
 
 ### Fixed
