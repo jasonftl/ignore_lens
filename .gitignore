@@ -22,6 +22,7 @@ logs/
 *.log
 
 # Project-specific
+vsix_archive/
 commit_notes.txt
 ISSUES.md
 VERSION
