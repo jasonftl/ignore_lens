@@ -9,6 +9,7 @@ flowchart TD
 
     subgraph " "
         C[WorkspaceScanner] --> D[DecorationProvider]
+        K[DecorationCache]
         N["Triggers on:<br>• file load<br>• workspace file change<br>• 'ignore' file edit"]
     end
 
@@ -24,6 +25,7 @@ flowchart TD
 - **extension.ts** - Entry point, registers event handlers
 - **WorkspaceScanner** - Scans workspace for files
 - **DecorationProvider** - Manages line decorations and match counts
-- **parserStrategy.ts** - Strategy pattern for parsing (GitignoreParser, VscodeignoreParser)
-- **matcherStrategy.ts** - Strategy pattern for matching (GitignoreMatcher, VscodeignoreMatcher)
-- **countStrategy.ts** - Strategy pattern for count calculation (GitignoreCountCalculator, VscodeignoreCountCalculator)
+- **decorationCache.ts** - Caches decoration data for instant display on tab switch
+- **parserStrategy.ts** - Strategy pattern for parsing (GitignoreParser, VscodeignoreParser; prettierignore uses GitignoreParser)
+- **matcherStrategy.ts** - Strategy pattern for matching (GitignoreMatcher, VscodeignoreMatcher; prettierignore uses GitignoreMatcher)
+- **countStrategy.ts** - Strategy pattern for count calculation (GitignoreCountCalculator, VscodeignoreCountCalculator; prettierignore uses GitignoreCountCalculator)
