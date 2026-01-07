@@ -8,7 +8,11 @@
         "ignorelens.noMatchForeground": "#f14c4c",
         "ignorelens.noMatchBackground": "#4a1a1a40",
         "ignorelens.matchCountForeground": "#6A9955",
-        "ignorelens.negationForeground": "#CCAA00"
+        "ignorelens.negationForeground": "#CCAA00",
+        "ignorelens.staleMatchCountForeground": "#3d5c30",
+        "ignorelens.staleNoMatchForeground": "#8b2020",
+        "ignorelens.staleNoMatchBackground": "#2a0a0a40",
+        "ignorelens.staleNegationForeground": "#7a6600"
     },
     "files.associations": {
         ".gitignore": "ignore",

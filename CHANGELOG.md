@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 07/01/2026
+
+### Fixed
+- Stale colours no longer appear black on extension update (uses inline hex defaults, respects user customisations)
+
 ## [0.7.0] - 06/01/2026
 
 ### Added
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stale decorations now cleared when disabling IgnoreLens via settings (ISSUE-M013)
 - Decorations now cleared for ignore files outside a workspace folder (ISSUE-L010)
 - Escaped wildcards no longer bypass minimatch fallback for character class patterns (ISSUE-L013)
+- Cache now only updated after confirming update is current, preventing stale data overwrites (ISSUE-M014)
 
 ## [0.6.1] - 05/01/2026
 

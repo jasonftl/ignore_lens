@@ -112,6 +112,49 @@ export class DecorationProvider implements vscode.Disposable {
     }
 
     /**
+     * Gets stale colours, using user customisations if defined, otherwise inline hex defaults.
+     * This avoids the "black colours on update" issue where new theme colours aren't registered
+     * until VS Code restarts.
+     *
+     * @returns Object with colour values (either hex strings or ThemeColor IDs)
+     */
+    private getStaleColours(): {
+        matchCount: string | { id: string };
+        noMatchForeground: string | { id: string };
+        noMatchBackground: string | { id: string };
+        negation: string | { id: string };
+    } {
+        const config = vscode.workspace.getConfiguration('workbench');
+        const customisations = config.get<Record<string, string>>('colorCustomizations', {});
+
+        // Default hex values (from package.json defaults for dark theme)
+        const defaults = {
+            matchCount: '#3d5c30',
+            noMatchForeground: '#8b2020',
+            noMatchBackground: '#2a0a0a40',
+            negation: '#7a6600'
+        };
+
+        // Use ThemeColor reference if user has customised, otherwise use inline hex
+        const result = {
+            matchCount: customisations['ignorelens.staleMatchCountForeground']
+                ? { id: 'ignorelens.staleMatchCountForeground' }
+                : defaults.matchCount,
+            noMatchForeground: customisations['ignorelens.staleNoMatchForeground']
+                ? { id: 'ignorelens.staleNoMatchForeground' }
+                : defaults.noMatchForeground,
+            noMatchBackground: customisations['ignorelens.staleNoMatchBackground']
+                ? { id: 'ignorelens.staleNoMatchBackground' }
+                : defaults.noMatchBackground,
+            negation: customisations['ignorelens.staleNegationForeground']
+                ? { id: 'ignorelens.staleNegationForeground' }
+                : defaults.negation
+        };
+
+        return result;
+    }
+
+    /**
      * Creates decoration types based on the current style setting.
      * Creates both normal and stale (darker) versions for cached data display.
      */
@@ -137,18 +180,21 @@ export class DecorationProvider implements vscode.Disposable {
             this.noMatchDecorationType = undefined;
             this.staleNoMatchDecorationType = undefined;
         } else {
+            // Get stale colours (uses inline hex by default, ThemeColor if user customised)
+            const staleColours = this.getStaleColours();
+
             // Build decoration options based on style (only for no-match patterns)
             const noMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
             const staleNoMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
 
             if (style === 'background' || style === 'both') {
                 noMatchOptions.backgroundColor = { id: 'ignorelens.noMatchBackground' };
-                staleNoMatchOptions.backgroundColor = { id: 'ignorelens.staleNoMatchBackground' };
+                staleNoMatchOptions.backgroundColor = staleColours.noMatchBackground;
             }
 
             if (style === 'text' || style === 'both') {
                 noMatchOptions.color = { id: 'ignorelens.noMatchForeground' };
-                staleNoMatchOptions.color = { id: 'ignorelens.staleNoMatchForeground' };
+                staleNoMatchOptions.color = staleColours.noMatchForeground;
             }
 
             // Create the decoration types (normal and stale)
@@ -410,17 +456,6 @@ export class DecorationProvider implements vscode.Disposable {
         const summaryText = 'Summary (' + ignoreFileName + '): ' + workspaceFiles.length + ' files, ' + finalSetSize + ' ignored, ≡' + totalShadowed + ' shadowed, ∅' + totalNotInSet + ' not in set, ✗' + totalBlocked + ' blocked';
         logger.log(summaryText);
 
-        // Store fresh data to cache (overwrites any stale data)
-        const cachedData: CachedDecorations = {
-            lineData: lineData,
-            maxLineLength: maxLineLength,
-            maxCol1Width: maxCol1Width,
-            maxCol2Width: maxCol2Width,
-            maxCol3Width: maxCol3Width,
-            timestamp: Date.now()
-        };
-        decorationCache.set(documentUri, cachedData);
-
         // Second pass: create decorations with aligned counts
         for (const data of lineData) {
             const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
@@ -491,6 +526,17 @@ export class DecorationProvider implements vscode.Disposable {
             return;
         }
 
+        // Store fresh data to cache only after confirming this update is still current
+        const cachedData: CachedDecorations = {
+            lineData: lineData,
+            maxLineLength: maxLineLength,
+            maxCol1Width: maxCol1Width,
+            maxCol2Width: maxCol2Width,
+            maxCol3Width: maxCol3Width,
+            timestamp: Date.now()
+        };
+        decorationCache.set(documentUri, cachedData);
+
         // Phase 2: Clear stale decorations and apply fresh ones with normal colours
         if (this.staleNoMatchDecorationType) {
             editor.setDecorations(this.staleNoMatchDecorationType, []);
@@ -529,6 +575,9 @@ export class DecorationProvider implements vscode.Disposable {
         const noMatchType = isStale ? this.staleNoMatchDecorationType : this.noMatchDecorationType;
         const matchCountType = isStale ? this.staleMatchCountDecorationType : this.matchCountDecorationType;
 
+        // Get stale colours (uses inline hex by default, ThemeColor if user customised)
+        const staleColours = isStale ? this.getStaleColours() : null;
+
         // Build decorations from cached line data
         for (const data of lineData) {
             const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
@@ -551,16 +600,16 @@ export class DecorationProvider implements vscode.Disposable {
                 const countText = col1Padded + nbsp + nbsp + col3Padded + nbsp + nbsp + col2;
 
                 // Set colour based on pattern type (using stale colours if isStale)
-                let countColour: { id: string };
+                let countColour: string | { id: string };
                 if (isNegation) {
-                    countColour = { id: isStale ? 'ignorelens.staleNegationForeground' : 'ignorelens.negationForeground' };
+                    countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
                 } else {
                     if (actionCount > 0) {
-                        countColour = { id: isStale ? 'ignorelens.staleMatchCountForeground' : 'ignorelens.matchCountForeground' };
+                        countColour = staleColours ? staleColours.matchCount : { id: 'ignorelens.matchCountForeground' };
                     } else if (noActionCount > 0) {
-                        countColour = { id: isStale ? 'ignorelens.staleNegationForeground' : 'ignorelens.negationForeground' };
+                        countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
                     } else {
-                        countColour = { id: isStale ? 'ignorelens.staleNoMatchForeground' : 'ignorelens.noMatchForeground' };
+                        countColour = staleColours ? staleColours.noMatchForeground : { id: 'ignorelens.noMatchForeground' };
                     }
                 }
 
