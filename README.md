@@ -136,6 +136,21 @@ Add to your `settings.json`:
 }
 ```
 
+#### Stale/Cached Colours
+
+When switching tabs, IgnoreLens briefly displays cached data in darker colours while refreshing. These can also be customised:
+
+```json
+{
+  "workbench.colorCustomizations": {
+    "ignorelens.staleMatchCountForeground": "#3d5c30",
+    "ignorelens.staleNoMatchForeground": "#8b2020",
+    "ignorelens.staleNoMatchBackground": "#2a0a0a40",
+    "ignorelens.staleNegationForeground": "#7a6600"
+  }
+}
+```
+
 ## Supported Patterns
 
 Standard gitignore syntax is supported:
@@ -158,6 +173,14 @@ Standard gitignore syntax is supported:
 ## Troubleshooting
 
 If match counts aren't showing or the extension behaves unexpectedly, try uninstalling and reinstalling. VS Code can sometimes fail to fully load an updated extension.
+
+## Technology Stack
+
+- **Language:** TypeScript 5.3.0+
+- **Framework:** VS Code Extension API (1.85.0+)
+- **Key Libraries:**
+  - `ignore` (5.3.0+) - Gitignore pattern matching
+  - `minimatch` (10.1.1) - Glob pattern matching for vscodeignore
 
 ## Acknowledgements
 

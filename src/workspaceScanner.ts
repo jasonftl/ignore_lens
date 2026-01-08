@@ -1,5 +1,5 @@
-// Date: 01/12/2025
-// Scans workspace files and maintains a cached file list for pattern matching
+// Date: 08/01/2026
+// Scans workspace files for pattern matching
 
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -7,12 +7,9 @@ import { getLogger } from './logger';
 
 /**
  * Scanner for workspace files.
- * Maintains a cached list of all files in the workspace for efficient pattern matching.
+ * Retrieves file lists from workspace folders for pattern matching.
  */
 export class WorkspaceScanner implements vscode.Disposable {
-    private cachedFiles: string[] | null = null;
-    private cacheInvalidated: boolean = true;
-
     /**
      * Retrieves all files in a specific workspace folder.
      * Files are returned as relative paths from the folder root with forward slashes.
@@ -45,68 +42,9 @@ export class WorkspaceScanner implements vscode.Disposable {
     }
 
     /**
-     * Retrieves all files in the workspace, using cache when available.
-     * Files are returned as relative paths from the workspace root with forward slashes.
-     * Note: In multi-root workspaces, prefer getFilesInFolder() for accurate results.
-     *
-     * @returns Array of relative file paths
-     */
-    public async getAllFiles(): Promise<string[]> {
-        const logger = getLogger();
-
-        // Return cached files if cache is valid
-        if (this.cachedFiles !== null && !this.cacheInvalidated) {
-            logger.log('Cache hit - using cached file list');
-            return this.cachedFiles;
-        }
-
-        logger.log('Cache miss - rescanning workspace');
-
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-
-        // Return empty array if no workspace is open
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-            this.cachedFiles = [];
-            this.cacheInvalidated = false;
-            return [];
-        }
-
-        const allFiles: string[] = [];
-
-        // Use VS Code's findFiles API with null exclude to include all files
-        // (including node_modules, .git, etc. that are normally excluded)
-        // Note: empty string '' has undocumented behaviour; null explicitly disables excludes
-        const files = await vscode.workspace.findFiles('**/*', null);
-
-        for (const file of files) {
-            // Convert to relative path from workspace root
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(file);
-
-            if (workspaceFolder) {
-                const relativePath = path.relative(workspaceFolder.uri.fsPath, file.fsPath);
-                // Normalise path separators to forward slashes for gitignore matching
-                const normalisedPath = relativePath.split(path.sep).join('/');
-                allFiles.push(normalisedPath);
-            }
-        }
-
-        this.cachedFiles = allFiles;
-        this.cacheInvalidated = false;
-
-        return allFiles;
-    }
-
-    /**
-     * Invalidates the file cache, forcing a rescan on next request.
-     */
-    public invalidateCache(): void {
-        this.cacheInvalidated = true;
-    }
-
-    /**
-     * Disposes of the scanner and clears the cache.
+     * Disposes of the scanner.
      */
     public dispose(): void {
-        this.cachedFiles = null;
+        // No resources to clean up
     }
 }

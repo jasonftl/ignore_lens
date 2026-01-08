@@ -1,8 +1,7 @@
-// Date: 05/01/2026
+// Date: 08/01/2026
 // Main extension entry point - handles activation and coordinates components
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
 import { getLogger, disposeLogger } from './logger';
@@ -12,25 +11,17 @@ let decorationProvider: DecorationProvider | undefined;
 let workspaceScanner: WorkspaceScanner | undefined;
 
 /**
- * Checks if a document is a supported ignore file type.
- * Supports .gitignore (via languageId), .vscodeignore and .prettierignore (via filename).
+ * Helper to check if document is a supported ignore file.
+ * Delegates to decorationProvider.isSupportedIgnoreFile().
  *
  * @param document - The text document to check
  * @returns True if the document is a supported ignore file
  */
 function isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
-    // Check for 'ignore' language ID (standard .gitignore detection)
-    if (document.languageId === 'ignore') {
-        return true;
+    if (!decorationProvider) {
+        return false;
     }
-
-    // Also check filenames for files that may not have 'ignore' languageId
-    const fileName = path.basename(document.uri.fsPath).toLowerCase();
-    if (fileName === '.vscodeignore' || fileName === '.prettierignore') {
-        return true;
-    }
-
-    return false;
+    return decorationProvider.isSupportedIgnoreFile(document);
 }
 
 /**
@@ -79,21 +70,15 @@ export function activate(context: vscode.ExtensionContext): void {
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*');
     context.subscriptions.push(fileWatcher);
 
-    // Invalidate cache and update decorations when files are created or deleted
+    // Update decorations when files are created or deleted
     const createDisposable = fileWatcher.onDidCreate((uri) => {
-        logger.log('Cache invalidated: file created - ' + uri.fsPath);
-        if (workspaceScanner) {
-            workspaceScanner.invalidateCache();
-        }
+        logger.log('File created: ' + uri.fsPath);
         refreshActiveEditor('file created');
     });
     context.subscriptions.push(createDisposable);
 
     const deleteDisposable = fileWatcher.onDidDelete((uri) => {
-        logger.log('Cache invalidated: file deleted - ' + uri.fsPath);
-        if (workspaceScanner) {
-            workspaceScanner.invalidateCache();
-        }
+        logger.log('File deleted: ' + uri.fsPath);
         refreshActiveEditor('file deleted');
     });
     context.subscriptions.push(deleteDisposable);

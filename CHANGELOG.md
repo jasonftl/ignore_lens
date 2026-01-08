@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 08/01/2026
+
+### Changed
+- Refactored `updateDecorations` into focused helper methods:
+  - `collectLineData()` - first pass collecting pattern data and counts
+  - `buildDecorationsFromLineData()` - builds decorations from line data
+- Consolidated duplicate decoration construction logic between `updateDecorations` and `applyDecorationsFromData`
+- Centralised supported ignore-file detection (single `isSupportedIgnoreFile` method)
+- Use `LineDecorationData` interface instead of inline type definition
+
+### Fixed
+- Potential RangeError in padding calculation when document grows after cache creation
+
+### Removed
+- Unused `getAllFiles` method and associated cache fields from WorkspaceScanner
+
 ## [0.7.1] - 07/01/2026
 
 ### Fixed

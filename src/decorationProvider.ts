@@ -1,4 +1,4 @@
-// Date: 05/01/2026
+// Date: 08/01/2026
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
@@ -64,11 +64,12 @@ export class DecorationProvider implements vscode.Disposable {
 
     /**
      * Checks if a document is a supported ignore file type.
+     * Supports .gitignore (via languageId), .vscodeignore and .prettierignore (via filename).
      *
      * @param document - The text document to check
      * @returns True if the document is a supported ignore file
      */
-    private isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
+    public isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
         // Check for 'ignore' language ID (standard .gitignore detection)
         if (document.languageId === 'ignore') {
             return true;
@@ -335,21 +336,86 @@ export class DecorationProvider implements vscode.Disposable {
                 .map(file => file.substring(prefix.length));
         }
 
-        // First pass: find longest line (including comments) and collect pattern match counts
-        // actionCount = files added/removed, noActionCount = already in/not in set, blockedCount = blocked by parent dir, setSize = current set size
-        // Column strings are pre-computed for alignment
-        const lineData: Array<{
-            lineIndex: number;
-            lineLength: number;
-            actionCount: number;
-            noActionCount: number;
-            blockedCount: number;
-            setSize: number;
-            isNegation: boolean;
-            col1: string;  // "+N" or "−N"
-            col2: string;  // "≡N" or "∅N" or "∅N ✗N" or empty
-            col3: string;  // "(N)"
-        }> = [];
+        // Collect line data using helper method
+        const collectionResult = this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles);
+        const { lineData, maxLineLength, maxCol1Width, maxCol2Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
+
+        // Log accurate summary using cumulative set data
+        const logger = getLogger();
+        const ignoreFileName = path.basename(document.uri.fsPath);
+        const summaryText = 'Summary (' + ignoreFileName + '): ' + workspaceFiles.length + ' files, ' + finalSetSize + ' ignored, ≡' + totalShadowed + ' shadowed, ∅' + totalNotInSet + ' not in set, ✗' + totalBlocked + ' blocked';
+        logger.log(summaryText);
+
+        // Second pass: build decorations using shared helper (useStaleColours = false for fresh data)
+        const decorations = this.buildDecorationsFromLineData(document, lineData, maxLineLength, maxCol1Width, maxCol3Width, false);
+        noMatchDecorations.push(...decorations.noMatchDecorations);
+        matchCountDecorations.push(...decorations.matchCountDecorations);
+
+        // Check again before applying - pattern matching may have taken time
+        if (thisVersion !== this.updateVersion) {
+            logger.log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
+            return;
+        }
+
+        // Store fresh data to cache only after confirming this update is still current
+        const cachedData: CachedDecorations = {
+            lineData: lineData,
+            maxLineLength: maxLineLength,
+            maxCol1Width: maxCol1Width,
+            maxCol2Width: maxCol2Width,
+            maxCol3Width: maxCol3Width,
+            timestamp: Date.now()
+        };
+        decorationCache.set(documentUri, cachedData);
+
+        // Phase 2: Clear stale decorations and apply fresh ones with normal colours
+        if (this.staleNoMatchDecorationType) {
+            editor.setDecorations(this.staleNoMatchDecorationType, []);
+        }
+        if (this.staleMatchCountDecorationType) {
+            editor.setDecorations(this.staleMatchCountDecorationType, []);
+        }
+
+        // Apply decorations
+        if (this.noMatchDecorationType) {
+            editor.setDecorations(this.noMatchDecorationType, noMatchDecorations);
+        }
+        if (this.matchCountDecorationType) {
+            editor.setDecorations(this.matchCountDecorationType, matchCountDecorations);
+        }
+
+        logger.log('Decoration update complete (fresh data applied)');
+    }
+
+    /**
+     * Collects line data for all patterns in the document.
+     * Calculates match counts, column strings, and summary statistics.
+     *
+     * @param document - The text document
+     * @param parser - The line parser strategy
+     * @param matcher - The pattern matcher strategy
+     * @param countCalculator - The count calculator strategy
+     * @param workspaceFiles - List of workspace files to match against
+     * @returns Collection result with line data and statistics
+     */
+    private collectLineData(
+        document: vscode.TextDocument,
+        parser: ILineParser,
+        matcher: IPatternMatcher,
+        countCalculator: ICountCalculator,
+        workspaceFiles: string[]
+    ): {
+        lineData: LineDecorationData[];
+        maxLineLength: number;
+        maxCol1Width: number;
+        maxCol2Width: number;
+        maxCol3Width: number;
+        totalShadowed: number;
+        totalNotInSet: number;
+        totalBlocked: number;
+        finalSetSize: number;
+    } {
+        const lineData: LineDecorationData[] = [];
         let maxLineLength = 0;
 
         // Find max line length across all lines (including comments)
@@ -450,15 +516,54 @@ export class DecorationProvider implements vscode.Disposable {
             }
         }
 
-        // Log accurate summary using cumulative set data
-        const finalSetSize = cumulativeSet.size;
-        const ignoreFileName = path.basename(document.uri.fsPath);
-        const summaryText = 'Summary (' + ignoreFileName + '): ' + workspaceFiles.length + ' files, ' + finalSetSize + ' ignored, ≡' + totalShadowed + ' shadowed, ∅' + totalNotInSet + ' not in set, ✗' + totalBlocked + ' blocked';
-        logger.log(summaryText);
+        return {
+            lineData,
+            maxLineLength,
+            maxCol1Width,
+            maxCol2Width,
+            maxCol3Width,
+            totalShadowed,
+            totalNotInSet,
+            totalBlocked,
+            finalSetSize: cumulativeSet.size
+        };
+    }
 
-        // Second pass: create decorations with aligned counts
+    /**
+     * Builds decoration options from line data.
+     * Shared helper used by both fresh and cached rendering paths.
+     *
+     * @param document - The text document
+     * @param lineData - The line decoration data
+     * @param maxLineLength - Maximum line length for padding calculation
+     * @param maxCol1Width - Maximum width of column 1
+     * @param maxCol3Width - Maximum width of column 3
+     * @param useStaleColours - Whether to use stale (darker) colours
+     * @returns Object containing noMatchDecorations and matchCountDecorations arrays
+     */
+    private buildDecorationsFromLineData(
+        document: vscode.TextDocument,
+        lineData: LineDecorationData[],
+        maxLineLength: number,
+        maxCol1Width: number,
+        maxCol3Width: number,
+        useStaleColours: boolean
+    ): { noMatchDecorations: vscode.DecorationOptions[]; matchCountDecorations: vscode.DecorationOptions[] } {
+        const noMatchDecorations: vscode.DecorationOptions[] = [];
+        const matchCountDecorations: vscode.DecorationOptions[] = [];
+
+        // Get stale colours if needed
+        const staleColours = useStaleColours ? this.getStaleColours() : null;
+
+        // Build decorations from line data
         for (const data of lineData) {
             const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
+
+            // Check line still exists in document (important for cached data)
+            if (lineIndex >= document.lineCount) {
+                continue;
+            }
+
             const line = document.lineAt(lineIndex);
 
             // Add match count decoration at end of line if enabled
@@ -478,24 +583,26 @@ export class DecorationProvider implements vscode.Disposable {
                 const countText = col1Padded + nbsp + nbsp + col3Padded + nbsp + nbsp + col2;
 
                 // Set colour based on pattern type
-                let countColour: { id: string };
+                let countColour: string | { id: string };
                 if (isNegation) {
-                    countColour = { id: 'ignorelens.negationForeground' };
+                    countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
                 } else {
                     // Colour: green if adding files, yellow if shadowed (all already in set), red if no matches
                     if (actionCount > 0) {
-                        countColour = { id: 'ignorelens.matchCountForeground' };
+                        countColour = staleColours ? staleColours.matchCount : { id: 'ignorelens.matchCountForeground' };
                     } else if (noActionCount > 0) {
                         // +0 with files already in set = shadowed by earlier pattern (yellow)
-                        countColour = { id: 'ignorelens.negationForeground' };
+                        countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
                     } else {
                         // +0 with nothing in set = truly redundant (red)
-                        countColour = { id: 'ignorelens.noMatchForeground' };
+                        countColour = staleColours ? staleColours.noMatchForeground : { id: 'ignorelens.noMatchForeground' };
                     }
                 }
 
                 // Pad with non-breaking spaces to align all counts
-                const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
+                // Clamp to 0 to prevent RangeError if document has grown since cache was created
+                const paddingCount = Math.max(0, maxLineLength - lineLength + 4);
+                const padding = '\u00A0'.repeat(paddingCount);
                 const countDecoration: vscode.DecorationOptions = {
                     range: range,
                     renderOptions: {
@@ -520,40 +627,7 @@ export class DecorationProvider implements vscode.Disposable {
             }
         }
 
-        // Check again before applying - pattern matching may have taken time
-        if (thisVersion !== this.updateVersion) {
-            logger.log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
-            return;
-        }
-
-        // Store fresh data to cache only after confirming this update is still current
-        const cachedData: CachedDecorations = {
-            lineData: lineData,
-            maxLineLength: maxLineLength,
-            maxCol1Width: maxCol1Width,
-            maxCol2Width: maxCol2Width,
-            maxCol3Width: maxCol3Width,
-            timestamp: Date.now()
-        };
-        decorationCache.set(documentUri, cachedData);
-
-        // Phase 2: Clear stale decorations and apply fresh ones with normal colours
-        if (this.staleNoMatchDecorationType) {
-            editor.setDecorations(this.staleNoMatchDecorationType, []);
-        }
-        if (this.staleMatchCountDecorationType) {
-            editor.setDecorations(this.staleMatchCountDecorationType, []);
-        }
-
-        // Apply decorations
-        if (this.noMatchDecorationType) {
-            editor.setDecorations(this.noMatchDecorationType, noMatchDecorations);
-        }
-        if (this.matchCountDecorationType) {
-            editor.setDecorations(this.matchCountDecorationType, matchCountDecorations);
-        }
-
-        logger.log('Decoration update complete (fresh data applied)');
+        return { noMatchDecorations, matchCountDecorations };
     }
 
     /**
@@ -566,75 +640,16 @@ export class DecorationProvider implements vscode.Disposable {
      */
     private applyDecorationsFromData(editor: vscode.TextEditor, cachedData: CachedDecorations, isStale: boolean): void {
         const document = editor.document;
-        const { lineData, maxLineLength, maxCol1Width, maxCol2Width, maxCol3Width } = cachedData;
-
-        const noMatchDecorations: vscode.DecorationOptions[] = [];
-        const matchCountDecorations: vscode.DecorationOptions[] = [];
+        const { lineData, maxLineLength, maxCol1Width, maxCol3Width } = cachedData;
 
         // Select decoration types based on stale flag
         const noMatchType = isStale ? this.staleNoMatchDecorationType : this.noMatchDecorationType;
         const matchCountType = isStale ? this.staleMatchCountDecorationType : this.matchCountDecorationType;
 
-        // Get stale colours (uses inline hex by default, ThemeColor if user customised)
-        const staleColours = isStale ? this.getStaleColours() : null;
-
-        // Build decorations from cached line data
-        for (const data of lineData) {
-            const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
-
-            // Check line still exists in document
-            if (lineIndex >= document.lineCount) {
-                continue;
-            }
-
-            const line = document.lineAt(lineIndex);
-
-            // Add match count decoration at end of line if enabled
-            if (this.showMatchCount && matchCountType) {
-                const range = line.range;
-
-                // Compact three-column format with Unicode symbols
-                const nbsp = '\u00A0';
-                const col1Padded = col1 + nbsp.repeat(maxCol1Width - col1.length);
-                const col3Padded = col3 + nbsp.repeat(maxCol3Width - col3.length);
-                const countText = col1Padded + nbsp + nbsp + col3Padded + nbsp + nbsp + col2;
-
-                // Set colour based on pattern type (using stale colours if isStale)
-                let countColour: string | { id: string };
-                if (isNegation) {
-                    countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
-                } else {
-                    if (actionCount > 0) {
-                        countColour = staleColours ? staleColours.matchCount : { id: 'ignorelens.matchCountForeground' };
-                    } else if (noActionCount > 0) {
-                        countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
-                    } else {
-                        countColour = staleColours ? staleColours.noMatchForeground : { id: 'ignorelens.noMatchForeground' };
-                    }
-                }
-
-                const padding = '\u00A0'.repeat(maxLineLength - lineLength + 4);
-                const countDecoration: vscode.DecorationOptions = {
-                    range: range,
-                    renderOptions: {
-                        after: {
-                            contentText: padding + countText,
-                            color: countColour,
-                            fontStyle: 'italic'
-                        }
-                    }
-                };
-                matchCountDecorations.push(countDecoration);
-            }
-
-            // Check for truly redundant patterns
-            const isTrulyRedundant = !isNegation && actionCount === 0 && noActionCount === 0;
-            if (isTrulyRedundant && noMatchType && this.currentStyle !== 'none') {
-                const range = line.range;
-                const decoration: vscode.DecorationOptions = { range };
-                noMatchDecorations.push(decoration);
-            }
-        }
+        // Build decorations using shared helper
+        const { noMatchDecorations, matchCountDecorations } = this.buildDecorationsFromLineData(
+            document, lineData, maxLineLength, maxCol1Width, maxCol3Width, isStale
+        );
 
         // Clear existing decorations first (both stale and normal)
         if (this.noMatchDecorationType) {
