@@ -205,15 +205,15 @@ export class VscodeignoreParser implements ILineParser {
 
 /**
  * Factory function to get the appropriate parser for a file type.
- * Note: prettierignore uses the same parser as gitignore (both use the ignore package).
+ * All gitignore-style files (see supportedFiles.ts) use the same parser.
  *
- * @param fileType - The type of ignore file
+ * @param fileType - The semantic type of ignore file
  * @returns Parser instance for that file type
  */
 export function getParser(fileType: IgnoreFileType): ILineParser {
     if (fileType === 'vscodeignore') {
         return new VscodeignoreParser();
     }
-    // gitignore and prettierignore use the same parser
+    // All gitignore-style files use the same parser
     return new GitignoreParser();
 }

@@ -269,15 +269,15 @@ export class VscodeignoreCountCalculator implements ICountCalculator {
 
 /**
  * Factory function to get the appropriate count calculator for a file type.
- * Note: prettierignore uses the same calculator as gitignore (both use directory blocking).
+ * All gitignore-style files (see supportedFiles.ts) use the same calculator with directory blocking.
  *
- * @param fileType - The type of ignore file
+ * @param fileType - The semantic type of ignore file
  * @returns Count calculator instance for that file type
  */
 export function getCountCalculator(fileType: IgnoreFileType): ICountCalculator {
     if (fileType === 'vscodeignore') {
         return new VscodeignoreCountCalculator();
     }
-    // gitignore and prettierignore use the same calculator
+    // All gitignore-style files use the same calculator
     return new GitignoreCountCalculator();
 }

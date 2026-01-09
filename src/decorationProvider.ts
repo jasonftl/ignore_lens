@@ -1,4 +1,4 @@
-// Date: 08/01/2026
+// Date: 09/01/2026
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
@@ -10,6 +10,7 @@ import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
+import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES } from './supportedFiles';
 
 /**
  * Provides line decorations for ignore files.
@@ -40,9 +41,9 @@ export class DecorationProvider implements vscode.Disposable {
     }
 
     /**
-     * Detects the ignore file type from the document.
-     * Returns 'vscodeignore' for .vscodeignore, 'prettierignore' for .prettierignore,
-     * otherwise 'gitignore'.
+     * Detects the semantic ignore file type from the document.
+     * Returns 'vscodeignore' for minimatch-style files, 'gitignore' for all others.
+     * See supportedFiles.ts for the complete list of supported files.
      *
      * @param document - The text document to check
      * @returns The detected ignore file type
@@ -50,21 +51,18 @@ export class DecorationProvider implements vscode.Disposable {
     private detectFileType(document: vscode.TextDocument): IgnoreFileType {
         const fileName = path.basename(document.uri.fsPath).toLowerCase();
 
-        if (fileName === '.vscodeignore') {
+        // Check if file uses minimatch semantics
+        if (MINIMATCH_STYLE_FILES.includes(fileName)) {
             return 'vscodeignore';
         }
 
-        if (fileName === '.prettierignore') {
-            return 'prettierignore';
-        }
-
-        // Default to gitignore for .gitignore and other ignore files
+        // All other supported files use gitignore semantics
         return 'gitignore';
     }
 
     /**
      * Checks if a document is a supported ignore file type.
-     * Supports .gitignore (via languageId), .vscodeignore and .prettierignore (via filename).
+     * Supports files with 'ignore' languageId, plus all files in supportedFiles.ts.
      *
      * @param document - The text document to check
      * @returns True if the document is a supported ignore file
@@ -75,13 +73,9 @@ export class DecorationProvider implements vscode.Disposable {
             return true;
         }
 
-        // Also check filenames for files that may not have 'ignore' languageId
+        // Check against centralised list of supported filenames
         const fileName = path.basename(document.uri.fsPath).toLowerCase();
-        if (fileName === '.vscodeignore' || fileName === '.prettierignore') {
-            return true;
-        }
-
-        return false;
+        return ALL_SUPPORTED_FILES.includes(fileName);
     }
 
     /**

@@ -279,15 +279,15 @@ export class VscodeignoreMatcher implements IPatternMatcher {
 
 /**
  * Factory function to get the appropriate matcher for a file type.
- * Note: prettierignore uses the same matcher as gitignore (both use the ignore package).
+ * All gitignore-style files (see supportedFiles.ts) use the same matcher.
  *
- * @param fileType - The type of ignore file
+ * @param fileType - The semantic type of ignore file
  * @returns Matcher instance for that file type
  */
 export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
     if (fileType === 'vscodeignore') {
         return new VscodeignoreMatcher();
     }
-    // gitignore and prettierignore use the same matcher
+    // All gitignore-style files use the same matcher
     return new GitignoreMatcher();
 }

@@ -1,14 +1,16 @@
-// Date: 05/01/2026
+// Date: 09/01/2026
 // Common TypeScript interfaces and types for the IgnoreLens extension
 
 /**
- * The type of ignore file being processed.
- * Different file types have different parsing and matching semantics.
- * - gitignore: Standard gitignore semantics (ignore package, basename matching)
- * - vscodeignore: VS Code extension ignore (minimatch, root-only matching)
- * - prettierignore: Prettier ignore (same semantics as gitignore)
+ * The semantic type of ignore file being processed.
+ * Different types have different parsing and matching semantics.
+ * - gitignore: Standard gitignore semantics (fnmatch, basename matching, directory blocking)
+ * - vscodeignore: VS Code extension ignore (minimatch, root-only matching, no blocking)
+ *
+ * Note: Many ignore formats (e.g. .prettierignore, .eslintignore) follow gitignore semantics.
+ * See supportedFiles.ts for the full list of supported files and their semantic types.
  */
-export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'prettierignore';
+export type IgnoreFileType = 'gitignore' | 'vscodeignore';
 
 /**
  * The type of line in an ignore file.

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.8.1] - 09/01/2026
+
+### Added
+- Support for 25 additional gitignore-style ignore files (28 total):
+  - Linters: `.eslintignore`, `.stylelintignore`, `.markdownlintignore`, `.jshintignore`, `.alexignore`, `.solhintignore`, `.stylintignore`
+  - Build tools: `.bazelignore`, `.helmignore`, `.swagger-codegen-ignore`
+  - Cloud platforms: `.cfignore`, `.ebignore`, `.slugignore`, `.vercelignore`, `.terraformignore`, `.upignore`
+  - Package managers: `.yarnignore`
+  - Frameworks: `.nuxtignore`, `.eleventyignore`, `.nodemonignore`
+  - Other: `.deployignore`, `.distignore`, `.flooignore`, `.jpmignore`, `.tokeignore`
+- Centralised supported file list in `src/supportedFiles.ts`
+
+### Changed
+- Simplified `IgnoreFileType` to 2 semantic types: `'gitignore'` and `'vscodeignore'`
+
 ## [0.8.0] - 08/01/2026
 
 ### Changed

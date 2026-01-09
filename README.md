@@ -41,13 +41,49 @@ Decorations update automatically when you edit the file or when workspace files 
 
 ## Supported Files
 
-IgnoreLens supports multiple ignore file formats with accurate semantics:
+IgnoreLens supports **28 ignore file formats** with accurate semantics:
 
-| File | Pattern Matching | Notes |
-|------|-----------------|-------|
-| `.gitignore` | fnmatch with basename matching | `*.log` matches at any depth |
-| `.prettierignore` | fnmatch with basename matching | Same semantics as .gitignore |
-| `.vscodeignore` | minimatch (strict) | `*.log` only matches root; use `**/*.log` for recursive |
+### Gitignore-Style (27 files)
+
+These use fnmatch with basename matching (`*.log` matches at any depth):
+
+| File | Tool/Platform |
+|------|---------------|
+| `.gitignore` | Git |
+| `.prettierignore` | Prettier |
+| `.eslintignore` | ESLint |
+| `.stylelintignore` | Stylelint |
+| `.markdownlintignore` | markdownlint |
+| `.alexignore` | alex |
+| `.bazelignore` | Bazel |
+| `.cfignore` | Cloud Foundry |
+| `.deployignore` | DeployHQ |
+| `.distignore` | WordPress CLI |
+| `.ebignore` | AWS Elastic Beanstalk |
+| `.eleventyignore` | Eleventy |
+| `.flooignore` | Floobits |
+| `.helmignore` | Helm |
+| `.jpmignore` | Mozilla Jetpack |
+| `.jshintignore` | JSHint |
+| `.nodemonignore` | nodemon |
+| `.nuxtignore` | Nuxt |
+| `.slugignore` | Heroku |
+| `.solhintignore` | Solhint |
+| `.stylintignore` | Stylint |
+| `.swagger-codegen-ignore` | Swagger Codegen |
+| `.terraformignore` | Terraform |
+| `.tokeignore` | Tokei |
+| `.upignore` | Up |
+| `.vercelignore` | Vercel |
+| `.yarnignore` | Yarn |
+
+### Minimatch-Style (1 file)
+
+These use strict glob matching (`*.log` only matches root level):
+
+| File | Tool/Platform |
+|------|---------------|
+| `.vscodeignore` | VS Code Extension API |
 
 ### Pattern Matching Comparison
 
