@@ -275,9 +275,12 @@ export class VscodeignoreCountCalculator implements ICountCalculator {
  * @returns Count calculator instance for that file type
  */
 export function getCountCalculator(fileType: IgnoreFileType): ICountCalculator {
-    if (fileType === 'vscodeignore') {
+    if (fileType === 'vscodeignore' || fileType === 'glob-no-negation' || fileType === 'tfignore' || fileType === 'dockerignore' || fileType === 'cvsignore') {
+        // These use simple add/remove logic (no directory blocking)
+        // For glob-no-negation/cvsignore, negation code won't be triggered since parser sets isNegation=false
+        // For tfignore/dockerignore, directory blocking is not documented/not applicable
         return new VscodeignoreCountCalculator();
     }
-    // All gitignore-style files use the same calculator
+    // All gitignore-style files use the same calculator with directory blocking
     return new GitignoreCountCalculator();
 }

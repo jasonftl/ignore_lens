@@ -10,7 +10,7 @@ import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
-import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES } from './supportedFiles';
+import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES, GLOB_NO_NEGATION_FILES, TFIGNORE_STYLE_FILES, DOCKERIGNORE_STYLE_FILES, CVSIGNORE_STYLE_FILES } from './supportedFiles';
 
 /**
  * Provides line decorations for ignore files.
@@ -54,6 +54,26 @@ export class DecorationProvider implements vscode.Disposable {
         // Check if file uses minimatch semantics
         if (MINIMATCH_STYLE_FILES.includes(fileName)) {
             return 'vscodeignore';
+        }
+
+        // Check if file uses glob without negation
+        if (GLOB_NO_NEGATION_FILES.includes(fileName)) {
+            return 'glob-no-negation';
+        }
+
+        // Check if file uses tfignore semantics
+        if (TFIGNORE_STYLE_FILES.includes(fileName)) {
+            return 'tfignore';
+        }
+
+        // Check if file uses dockerignore semantics
+        if (DOCKERIGNORE_STYLE_FILES.includes(fileName)) {
+            return 'dockerignore';
+        }
+
+        // Check if file uses cvsignore semantics
+        if (CVSIGNORE_STYLE_FILES.includes(fileName)) {
+            return 'cvsignore';
         }
 
         // All other supported files use gitignore semantics

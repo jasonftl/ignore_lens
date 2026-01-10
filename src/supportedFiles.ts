@@ -44,7 +44,51 @@ export const GITIGNORE_STYLE_FILES: readonly string[] = [
  * Handled by: VscodeignoreParser, VscodeignoreMatcher, VscodeignoreCountCalculator
  */
 export const MINIMATCH_STYLE_FILES: readonly string[] = [
+    '.gcloudignore',
+    '.npmignore',
+    '.p4ignore',
     '.vscodeignore',
+];
+
+/**
+ * Glob-style files without negation support.
+ * These use strict glob matching like minimatch, but do not support negation patterns.
+ * Lines starting with ! are treated as literal patterns (matching files starting with !).
+ * Handled by: GlobNoNegationParser, VscodeignoreMatcher, VscodeignoreCountCalculator
+ */
+export const GLOB_NO_NEGATION_FILES: readonly string[] = [
+    '.bzrignore',
+    '.chefignore',
+];
+
+/**
+ * Tfignore-style files.
+ * These use gitignore-style basename matching but with \ as the root anchor instead of /.
+ * Patterns are recursive by default (like gitignore), but no directory blocking.
+ * Handled by: TfignoreParser, GitignoreMatcher, VscodeignoreCountCalculator
+ */
+export const TFIGNORE_STYLE_FILES: readonly string[] = [
+    '.tfignore',
+];
+
+/**
+ * Dockerignore-style files.
+ * These use minimatch-style matching (*.ext matches root only) but strip leading
+ * and trailing slashes from patterns. Negations always work (no directory blocking).
+ * Handled by: DockerignoreParser, VscodeignoreMatcher, VscodeignoreCountCalculator
+ */
+export const DOCKERIGNORE_STYLE_FILES: readonly string[] = [
+    '.dockerignore',
+];
+
+/**
+ * Cvsignore-style files.
+ * These use simple glob matching (root only), no # comments, no negation.
+ * The ! alone clears the list (skipped for IgnoreLens), # is literal.
+ * Handled by: CvsignoreParser, VscodeignoreMatcher, VscodeignoreCountCalculator
+ */
+export const CVSIGNORE_STYLE_FILES: readonly string[] = [
+    '.cvsignore',
 ];
 
 /**
@@ -53,4 +97,8 @@ export const MINIMATCH_STYLE_FILES: readonly string[] = [
 export const ALL_SUPPORTED_FILES: readonly string[] = [
     ...GITIGNORE_STYLE_FILES,
     ...MINIMATCH_STYLE_FILES,
+    ...GLOB_NO_NEGATION_FILES,
+    ...TFIGNORE_STYLE_FILES,
+    ...DOCKERIGNORE_STYLE_FILES,
+    ...CVSIGNORE_STYLE_FILES,
 ];

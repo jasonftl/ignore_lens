@@ -6,11 +6,15 @@
  * Different types have different parsing and matching semantics.
  * - gitignore: Standard gitignore semantics (fnmatch, basename matching, directory blocking)
  * - vscodeignore: VS Code extension ignore (minimatch, root-only matching, no blocking)
+ * - glob-no-negation: Glob patterns without negation support (! is literal, not negation)
+ * - tfignore: Team Foundation (basename matching like gitignore, but \ anchors to root, no blocking)
+ * - dockerignore: Docker ignore (minimatch-style, but strips leading/trailing slashes, no blocking)
+ * - cvsignore: CVS ignore (simple glob, root only, no # comments, no negation)
  *
  * Note: Many ignore formats (e.g. .prettierignore, .eslintignore) follow gitignore semantics.
  * See supportedFiles.ts for the full list of supported files and their semantic types.
  */
-export type IgnoreFileType = 'gitignore' | 'vscodeignore';
+export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'glob-no-negation' | 'tfignore' | 'dockerignore' | 'cvsignore';
 
 /**
  * The type of line in an ignore file.

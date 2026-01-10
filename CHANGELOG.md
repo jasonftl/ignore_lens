@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Support for `.npmignore` files (uses minimatch semantics like .vscodeignore)
+- Support for `.p4ignore` files (Perforce - uses minimatch semantics)
+- Support for `.bzrignore` files (Bazaar - glob without negation)
+- Support for `.chefignore` files (Chef - glob without negation)
+- Support for `.tfignore` files (Team Foundation - gitignore matching with `\` root anchor)
+- Support for `.dockerignore` files (Docker - minimatch with leading/trailing `/` stripped)
+- Support for `.gcloudignore` files (Google Cloud - minimatch semantics)
+- Support for `.cvsignore` files (CVS - simple glob patterns, no comments, no negation)
+
+### Changed
+- Reorganised README Supported Files section with comprehensive format table including docs links
+- Added Pattern Syntax Types reference table
+- Added format-specific comparison tables (tfignore vs gitignore, dockerignore vs vscodeignore)
+
 ## [0.8.1] - 09/01/2026
 
 ### Added

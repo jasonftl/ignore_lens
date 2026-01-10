@@ -285,9 +285,10 @@ export class VscodeignoreMatcher implements IPatternMatcher {
  * @returns Matcher instance for that file type
  */
 export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
-    if (fileType === 'vscodeignore') {
+    if (fileType === 'vscodeignore' || fileType === 'glob-no-negation' || fileType === 'dockerignore' || fileType === 'cvsignore') {
+        // All use minimatch-style matching (no basename matching, *.ext matches root only)
         return new VscodeignoreMatcher();
     }
-    // All gitignore-style files use the same matcher
+    // gitignore-style and tfignore files use basename matching
     return new GitignoreMatcher();
 }
