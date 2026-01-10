@@ -444,18 +444,14 @@ export class DockerignoreParser implements ILineParser {
             patternPart = processedLine.substring(1);
         }
 
-        // Strip leading / (Docker disregards it)
+        // Strip leading / (Docker disregards it - /pattern = pattern)
         if (patternPart.startsWith('/')) {
             patternPart = patternPart.substring(1);
         }
 
-        // Check for directory pattern (before stripping trailing /)
+        // Check for directory pattern (trailing /)
+        // Do NOT strip trailing / - VscodeignoreMatcher.expandFolderPattern() needs it
         const isDirectory = patternPart.endsWith('/');
-
-        // Strip trailing / (Docker disregards it, but we still mark isDirectory for expansion)
-        if (isDirectory) {
-            patternPart = patternPart.slice(0, -1);
-        }
 
         // Reconstruct the full pattern with negation prefix if needed
         const finalPattern = isNegation ? '!' + patternPart : patternPart;

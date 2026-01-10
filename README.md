@@ -101,8 +101,8 @@ Standard gitignore rules apply:
 |------|---------------|-------|------|
 | `.bzrignore` | Bazaar (VCS) | `!` is literal | [controlling registration](http://doc.bazaar.canonical.com/latest/en/user-guide/controlling_registration.html) |
 | `.chefignore` | Chef (config mgmt) | `!` is literal | [chef repo](https://docs.chef.io/chef_repo/) |
-| `.cvsignore` | CVS (VCS) | No `#` comments, `!` clears list | [cvsignore](https://www.gnu.org/software/trans-coord/manual/cvs/html_node/cvsignore.html) |
-| `.dockerignore` | Docker | Leading/trailing `/` stripped | [build context](https://docs.docker.com/build/concepts/context/) |
+| `.cvsignore` | CVS (VCS) | No `#` comments, `!` is literal | [cvsignore](https://www.gnu.org/software/trans-coord/manual/cvs/html_node/cvsignore.html) |
+| `.dockerignore` | Docker | Leading `/` stripped | [build context](https://docs.docker.com/build/concepts/context/) |
 | `.gcloudignore` | Google Cloud | `*.ext` root only | [gcloudignore](https://cloud.google.com/sdk/gcloud/reference/topic/gcloudignore) |
 | `.npmignore` | npm | `*.ext` root only | [npm developers](https://docs.npmjs.com/cli/v9/using-npm/developers/) |
 | `.p4ignore` | Perforce (VCS) | `*.ext` root only (first-match-wins) | [P4IGNORE](https://www.perforce.com/manuals/cmdref/Content/CmdRef/P4IGNORE.html) |

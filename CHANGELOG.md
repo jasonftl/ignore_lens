@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 10/01/2026
 
 ### Added
 - Support for `.npmignore` files (uses minimatch semantics like .vscodeignore)
@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Converted symbol table from 3-column-pair to clean 2-column format
   - Added inline comments to colour customisation JSON
   - Fixed minor wording issues
+
+### Fixed
+- Character-class patterns like `[.]env` now correctly match dotfiles in minimatch fallback path (ISSUE-M018)
+- Literal `!` and `#` patterns in bzrignore/chefignore/cvsignore now correctly match files
+  - Added `GlobNoNegationMatcher` with `{ nonegate: true, nocomment: true }` options
+  - `!important.txt` matches file `!important.txt`, `#readme.txt` matches file `#readme.txt`
+- Directory patterns in dockerignore now correctly expand to match contents
+  - `node_modules/` was not being expanded to `node_modules/**` due to premature trailing `/` stripping
 
 ## [0.8.1] - 09/01/2026
 

@@ -74,7 +74,8 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
         if (isAnchored) {
             if (anchoredHasSubpath) {
                 // Pattern has subpath structure, match against full path
-                const matches = minimatch(file, cleanPattern);
+                // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+                const matches = minimatch(file, cleanPattern, { dot: true });
                 if (matches) {
                     matchingFiles.push(file);
                 }
@@ -85,16 +86,18 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
                     continue;  // Skip non-root files for simple anchored patterns
                 }
                 // Match against cleaned pattern (without leading /)
-                const matches = minimatch(file, cleanPattern);
+                // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+                const matches = minimatch(file, cleanPattern, { dot: true });
                 if (matches) {
                     matchingFiles.push(file);
                 }
             }
         } else {
             // Non-anchored: try matching with matchBase (pattern matches basename)
-            const matchesBase = minimatch(file, cleanPattern, { matchBase: true });
+            // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+            const matchesBase = minimatch(file, cleanPattern, { matchBase: true, dot: true });
             // Also try matching the full path
-            const matchesFull = minimatch(file, cleanPattern);
+            const matchesFull = minimatch(file, cleanPattern, { dot: true });
 
             if (matchesBase || matchesFull) {
                 matchingFiles.push(file);
@@ -173,20 +176,23 @@ export class GitignoreMatcher implements IPatternMatcher {
                 const anchoredHasSubpath = cleanPattern.includes('/');
                 if (anchoredHasSubpath) {
                     // Pattern has subpath structure, match against full path
-                    return minimatch(filePath, cleanPattern);
+                    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+                    return minimatch(filePath, cleanPattern, { dot: true });
                 } else {
                     // Pattern has no subpath, only match root-level files
                     const isRootLevel = !filePath.includes('/');
                     if (!isRootLevel) {
                         return false;
                     }
-                    return minimatch(filePath, cleanPattern);
+                    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+                    return minimatch(filePath, cleanPattern, { dot: true });
                 }
             }
 
             // Non-anchored: use minimatch for character class patterns like [a].ts
-            const matchesBase = minimatch(filePath, cleanPattern, { matchBase: true });
-            const matchesFull = minimatch(filePath, cleanPattern);
+            // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+            const matchesBase = minimatch(filePath, cleanPattern, { matchBase: true, dot: true });
+            const matchesFull = minimatch(filePath, cleanPattern, { dot: true });
             return matchesBase || matchesFull;
         }
 
@@ -242,7 +248,9 @@ export class VscodeignoreMatcher implements IPatternMatcher {
         for (const file of files) {
             // NO matchBase option - *.log only matches root level
             // Use { dot: true } to match dotfiles
-            const matches = minimatch(file, cleanPattern, { dot: true });
+            // Use { nonegate: true } so literal ! in patterns (e.g. from bzrignore) isn't treated as negation
+            // (We handle negation ourselves by stripping the ! prefix above)
+            const matches = minimatch(file, cleanPattern, { dot: true, nonegate: true });
             if (matches) {
                 matchingFiles.push(file);
             }
@@ -272,7 +280,86 @@ export class VscodeignoreMatcher implements IPatternMatcher {
         cleanPattern = this.expandFolderPattern(cleanPattern);
 
         // NO matchBase option - strict matching
-        const matches = minimatch(filePath, cleanPattern, { dot: true });
+        // Use { nonegate: true } so literal ! in patterns isn't treated as negation
+        const matches = minimatch(filePath, cleanPattern, { dot: true, nonegate: true });
+        return matches;
+    }
+}
+
+/**
+ * Matcher for files that never treat ! as negation (bzrignore, chefignore, cvsignore).
+ * Uses pure minimatch with { dot: true, nonegate: true, nocomment: true }.
+ * The ! character at the start of a pattern matches a literal ! in filenames.
+ * The # character at the start of a pattern matches a literal # in filenames (cvsignore).
+ */
+export class GlobNoNegationMatcher implements IPatternMatcher {
+    /**
+     * Expands a folder pattern to include all contents.
+     * folder/ becomes folder/**
+     *
+     * @param pattern - The original pattern
+     * @returns Expanded pattern or original if no expansion needed
+     */
+    private expandFolderPattern(pattern: string): string {
+        if (pattern.endsWith('/')) {
+            return pattern + '**';
+        }
+        return pattern;
+    }
+
+    /**
+     * Finds all files that match the given pattern.
+     * Never treats ! as negation - it's always a literal character.
+     *
+     * @param pattern - The pattern to match against
+     * @param files - Array of file paths (relative, with forward slashes)
+     * @returns MatchResult containing matched files
+     */
+    public findMatches(pattern: string, files: string[]): MatchResult {
+        // Never treat ! as negation in these file types
+        const isNegation = false;
+        let cleanPattern = pattern;
+
+        // Auto-expand folder patterns: folder/ becomes folder/**
+        cleanPattern = this.expandFolderPattern(cleanPattern);
+
+        const matchingFiles: string[] = [];
+
+        for (const file of files) {
+            // NO matchBase option - *.log only matches root level
+            // Use { dot: true } to match dotfiles
+            // Use { nonegate: true } so ! in patterns is treated as literal
+            // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
+            const matches = minimatch(file, cleanPattern, { dot: true, nonegate: true, nocomment: true });
+            if (matches) {
+                matchingFiles.push(file);
+            }
+        }
+
+        const result: MatchResult = {
+            pattern: pattern,
+            matchingFiles: matchingFiles,
+            isNegation: isNegation
+        };
+        return result;
+    }
+
+    /**
+     * Tests if a single file matches the pattern.
+     *
+     * @param pattern - The pattern
+     * @param filePath - The file path to test
+     * @returns true if the file matches the pattern
+     */
+    public testMatch(pattern: string, filePath: string): boolean {
+        let cleanPattern = pattern;
+
+        // Auto-expand folder patterns
+        cleanPattern = this.expandFolderPattern(cleanPattern);
+
+        // Use { nonegate: true } so ! in patterns is treated as literal
+        // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
+        const matches = minimatch(filePath, cleanPattern, { dot: true, nonegate: true, nocomment: true });
         return matches;
     }
 }
@@ -285,8 +372,12 @@ export class VscodeignoreMatcher implements IPatternMatcher {
  * @returns Matcher instance for that file type
  */
 export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
-    if (fileType === 'vscodeignore' || fileType === 'glob-no-negation' || fileType === 'dockerignore' || fileType === 'cvsignore') {
-        // All use minimatch-style matching (no basename matching, *.ext matches root only)
+    if (fileType === 'glob-no-negation' || fileType === 'cvsignore') {
+        // These formats treat ! as literal, never as negation
+        return new GlobNoNegationMatcher();
+    }
+    if (fileType === 'vscodeignore' || fileType === 'dockerignore') {
+        // These use minimatch-style matching with ! as negation
         return new VscodeignoreMatcher();
     }
     // gitignore-style and tfignore files use basename matching
