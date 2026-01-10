@@ -18,9 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for `.cvsignore` files (CVS - simple glob patterns, no comments, no negation)
 
 ### Changed
-- Reorganised README Supported Files section with comprehensive format table including docs links
-- Added Pattern Syntax Types reference table
-- Added format-specific comparison tables (tfignore vs gitignore, dockerignore vs vscodeignore)
+- Reorganised README Supported Files section:
+  - Split into Gitignore-Compliant Formats (27) and Other Supported Formats (9) tables
+  - Added category groupings (Version Control, Linters, Cloud & Deployment, etc.)
+  - Added descriptive docs links for all 36 formats
+  - Converted gitignore rules description to bullet list
+  - Shortened verbose notes in Other Formats table
+- Improved README readability:
+  - Converted symbol table from 3-column-pair to clean 2-column format
+  - Added inline comments to colour customisation JSON
+  - Fixed minor wording issues
 
 ## [0.8.1] - 09/01/2026
 
