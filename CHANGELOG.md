@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 11/01/2026
+
+### Added
+- Support for 9 AI coding tool ignore files:
+  - `.aiderignore` (Aider)
+  - `.aiexclude` (Gemini Code Assist)
+  - `.aiignore` (JetBrains AI Assistant)
+  - `.augmentignore` (Augment Code)
+  - `.clineignore` (Cline)
+  - `.codeiumignore` (Windsurf/Codeium)
+  - `.cursorignore` (Cursor)
+  - `.geminiignore` (Gemini CLI)
+  - `.tabnineignore` (Tabnine)
+- Support for ripgrep ignore files:
+  - `.ignore` (generic, used by ripgrep, fd, and many AI tools)
+  - `.rgignore` (ripgrep-specific)
+- All new ignore files use gitignore semantics (basename matching, directory blocking)
+
 ## [0.9.0] - 10/01/2026
 
 ### Added
