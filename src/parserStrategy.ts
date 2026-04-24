@@ -1,4 +1,4 @@
-// Date: 05/01/2026
+// Date: 24/04/2026
 // Strategy pattern for parsing different ignore file types
 // Gitignore and vscodeignore have different whitespace handling rules
 
@@ -573,6 +573,116 @@ export class CvsignoreParser implements ILineParser {
 }
 
 /**
+ * Parser for .p4ignore files (Perforce).
+ * P4 uses leading `/` or `\` as the root anchor (relative to the ignore file's
+ * directory). Rules without path separators are applied recursively.
+ * Leading `\` is converted to `/` so GitignoreMatcher can honour the anchor;
+ * other `\` in paths are converted to `/` so Windows-authored rules work.
+ * Comment (`#`) and negation (`!`) syntax matches gitignore.
+ */
+export class P4ignoreParser implements ILineParser {
+    /**
+     * Parses a single line from a p4ignore file.
+     *
+     * @param line - The raw line text from the ignore file
+     * @returns ParsedLine with type and pattern information
+     */
+    public parseLine(line: string): ParsedLine {
+        // Handle trailing whitespace like gitignore
+        let processedLine = line;
+
+        const trailingEscapeMatch = processedLine.match(/((?:\\[ \t])+)$/);
+        if (trailingEscapeMatch) {
+            const escapedPart = trailingEscapeMatch[1];
+            const preservedWhitespace = escapedPart.replace(/\\/g, '');
+            processedLine = processedLine.slice(0, -escapedPart.length) + preservedWhitespace;
+        } else {
+            // Trim trailing spaces only
+            processedLine = processedLine.replace(/ +$/, '');
+        }
+
+        // Check for blank lines
+        if (processedLine === '') {
+            const result: ParsedLine = {
+                type: 'blank' as LineType,
+                pattern: '',
+                isNegation: false,
+                isDirectory: false,
+                rawText: line
+            };
+            return result;
+        }
+
+        // Check for comments - # at start
+        if (processedLine.startsWith('#')) {
+            const result: ParsedLine = {
+                type: 'comment' as LineType,
+                pattern: '',
+                isNegation: false,
+                isDirectory: false,
+                rawText: line
+            };
+            return result;
+        }
+
+        // Check for negation (lines starting with !)
+        let isNegation = false;
+        let patternStart = 0;
+        if (processedLine.startsWith('!')) {
+            isNegation = true;
+            patternStart = 1;
+        }
+
+        let patternPart = processedLine.substring(patternStart);
+
+        // Convert leading \ to / (P4 Windows root anchor); leading / is already
+        // the gitignore root anchor and needs no conversion.
+        if (patternPart.startsWith('\\')) {
+            patternPart = '/' + patternPart.substring(1);
+        }
+
+        // Convert any remaining backslashes in paths to forward slashes
+        patternPart = patternPart.replace(/\\/g, '/');
+
+        const finalPattern = isNegation ? '!' + patternPart : patternPart;
+        const isDirectory = patternPart.endsWith('/');
+
+        const result: ParsedLine = {
+            type: 'pattern' as LineType,
+            pattern: finalPattern,
+            isNegation: isNegation,
+            isDirectory: isDirectory,
+            rawText: line
+        };
+        return result;
+    }
+
+    /**
+     * Parses an entire ignore file content.
+     *
+     * @param content - The full content of an ignore file
+     * @returns Array of ParsedLine objects
+     */
+    public parseFile(content: string): ParsedLine[] {
+        // Strip UTF-8 BOM if present
+        let processedContent = content;
+        if (processedContent.charCodeAt(0) === 0xFEFF) {
+            processedContent = processedContent.substring(1);
+        }
+
+        const lines = processedContent.split(/\r?\n/);
+        const parsedLines: ParsedLine[] = [];
+
+        for (const line of lines) {
+            const parsed = this.parseLine(line);
+            parsedLines.push(parsed);
+        }
+
+        return parsedLines;
+    }
+}
+
+/**
  * Factory function to get the appropriate parser for a file type.
  * All gitignore-style files (see supportedFiles.ts) use the same parser.
  *
@@ -594,6 +704,9 @@ export function getParser(fileType: IgnoreFileType): ILineParser {
     }
     if (fileType === 'cvsignore') {
         return new CvsignoreParser();
+    }
+    if (fileType === 'p4ignore') {
+        return new P4ignoreParser();
     }
     // All gitignore-style files use the same parser
     return new GitignoreParser();

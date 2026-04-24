@@ -106,7 +106,7 @@ Standard gitignore rules apply:
 | `.dockerignore` | Docker | Leading `/` stripped | [build context](https://docs.docker.com/build/concepts/context/) |
 | `.gcloudignore` | Google Cloud | `*.ext` root only | [gcloudignore](https://cloud.google.com/sdk/gcloud/reference/topic/gcloudignore) |
 | `.npmignore` | npm | `*.ext` root only | [npm developers](https://docs.npmjs.com/cli/v9/using-npm/developers/) |
-| `.p4ignore` | Perforce (VCS) | `*.ext` root only (first-match-wins) | [P4IGNORE](https://www.perforce.com/manuals/cmdref/Content/CmdRef/P4IGNORE.html) |
+| `.p4ignore` | Perforce (VCS) | `/` and `\` are root anchors, first-match-wins | [P4IGNORE](https://www.perforce.com/manuals/cmdref/Content/CmdRef/P4IGNORE.html) |
 | `.tfignore` | Team Foundation (VCS) | `\` anchors to root, no dir blocking | [TFVC ignore](https://learn.microsoft.com/en-us/azure/devops/repos/tfvc/add-files-server) |
 | `.vscodeignore` | VS Code Extension API | `*.ext` root only, trims all whitespace | [publishing extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) |
 

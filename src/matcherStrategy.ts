@@ -391,6 +391,7 @@ export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
         // These use minimatch-style matching with ! as negation
         return new VscodeignoreMatcher();
     }
-    // gitignore-style and tfignore files use basename matching
+    // gitignore-style, tfignore, and p4ignore files use basename matching
+    // (P4ignoreParser normalises anchors to gitignore form before reaching this matcher)
     return new GitignoreMatcher();
 }

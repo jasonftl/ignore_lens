@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `VscodeignoreMatcher.findMatches`, `GlobNoNegationMatcher.findMatches`, and the character-class fallback in `GitignoreMatcher` all construct a `Minimatch` instance per pattern and reuse it across every workspace file
   - Eliminates hundreds of thousands of redundant glob→regex compilations per decoration update on large workspaces
   - Semantics unchanged: all option sets (`dot`, `nonegate`, `nocomment`, `matchBase`) preserved exactly
+- `.p4ignore` (Perforce) now uses gitignore-style matching with Perforce-specific anchor and evaluation semantics (ISSUE-M022, ISSUE-M023)
+  - Leading `/` and `\` are both honoured as root anchors (previously a literal `/` caused rooted rules to never match)
+  - Rules without path separators (e.g. `*.dll`) now match at every depth (previously root-only)
+  - Evaluation is first-match-wins — once a file is decided by any pattern, later patterns matching the same file are reported as no-action (this is the opposite of gitignore's last-match-wins, and matches the Perforce specification)
 
 ### Fixed
 - Removed unused `vscode` import from `decorationCache.ts` (ISSUE-L022)

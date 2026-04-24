@@ -1,11 +1,14 @@
-// Date: 05/01/2026
+// Date: 24/04/2026
 // Strategy pattern for count calculation in different ignore file types
-// Gitignore has directory blocking for negations; vscodeignore does not
+// Gitignore has directory blocking for negations; vscodeignore does not;
+// p4ignore uses first-match-wins (tracked via decidedSet)
 
 import { AdvancedCountResult, IgnoreFileType } from './types';
 
 /**
  * Interface for count calculators.
+ * decidedSet is only consumed by calculators that need first-match-wins
+ * semantics (currently P4ignoreCountCalculator); other calculators ignore it.
  */
 export interface ICountCalculator {
     calculateCount(
@@ -14,7 +17,8 @@ export interface ICountCalculator {
         isDirectory: boolean,
         cumulativeSet: Set<string>,
         ignoredDirs: Set<string>,
-        pattern: string
+        pattern: string,
+        decidedSet?: Set<string>
     ): AdvancedCountResult;
 }
 
@@ -268,6 +272,74 @@ export class VscodeignoreCountCalculator implements ICountCalculator {
 }
 
 /**
+ * Count calculator for .p4ignore files (Perforce).
+ * Implements first-match-wins semantics: once a file has been decided by any
+ * earlier pattern, later patterns matching the same file do nothing.
+ * This is the opposite of gitignore's last-match-wins.
+ *
+ * - cumulativeSet tracks files currently ignored (same as gitignore)
+ * - decidedSet tracks files whose fate has been determined by an earlier pattern
+ * - ignoredDirs is unused (P4 has no directory-blocking semantics)
+ */
+export class P4ignoreCountCalculator implements ICountCalculator {
+    /**
+     * Calculates the count for a p4ignore pattern using first-match-wins.
+     *
+     * @param matchingFiles - Files that match this pattern
+     * @param isNegation - Whether this is a negation pattern
+     * @param isDirectory - Whether this is a directory pattern (unused for p4)
+     * @param cumulativeSet - Set of files currently ignored (modified in place)
+     * @param ignoredDirs - Unused for p4
+     * @param pattern - The original pattern string (unused for p4)
+     * @param decidedSet - Files already decided by an earlier pattern (modified in place)
+     * @returns Count result with actionCount, noActionCount, blockedCount (always 0), setSize
+     */
+    public calculateCount(
+        matchingFiles: string[],
+        isNegation: boolean,
+        isDirectory: boolean,
+        cumulativeSet: Set<string>,
+        ignoredDirs: Set<string>,
+        pattern: string = '',
+        decidedSet?: Set<string>
+    ): AdvancedCountResult {
+        let actionCount: number = 0;
+        let noActionCount: number = 0;
+        // blockedCount is always 0 for p4ignore (no directory blocking)
+        const blockedCount: number = 0;
+
+        // Unused parameters - kept for interface compatibility
+        void isDirectory;
+        void ignoredDirs;
+        void pattern;
+
+        // Defensive: if caller omits decidedSet, fall back to a local one
+        // (each pattern starts fresh, so first-match-wins degrades to "this pattern wins")
+        const decided = decidedSet ? decidedSet : new Set<string>();
+
+        for (const file of matchingFiles) {
+            if (decided.has(file)) {
+                // Earlier pattern already decided this file's fate - first-match-wins
+                noActionCount = noActionCount + 1;
+                continue;
+            }
+            // First pattern to match this file - decide its fate
+            decided.add(file);
+            if (isNegation) {
+                // Decide as "not ignored" (never added to cumulativeSet)
+                actionCount = actionCount + 1;
+            } else {
+                // Decide as "ignored"
+                cumulativeSet.add(file);
+                actionCount = actionCount + 1;
+            }
+        }
+
+        return { actionCount, noActionCount, blockedCount, setSize: cumulativeSet.size };
+    }
+}
+
+/**
  * Factory function to get the appropriate count calculator for a file type.
  * All gitignore-style files (see supportedFiles.ts) use the same calculator with directory blocking.
  *
@@ -275,6 +347,10 @@ export class VscodeignoreCountCalculator implements ICountCalculator {
  * @returns Count calculator instance for that file type
  */
 export function getCountCalculator(fileType: IgnoreFileType): ICountCalculator {
+    if (fileType === 'p4ignore') {
+        // P4 uses first-match-wins semantics
+        return new P4ignoreCountCalculator();
+    }
     if (fileType === 'vscodeignore' || fileType === 'glob-no-negation' || fileType === 'tfignore' || fileType === 'dockerignore' || fileType === 'cvsignore') {
         // These use simple add/remove logic (no directory blocking)
         // For glob-no-negation/cvsignore, negation code won't be triggered since parser sets isNegation=false

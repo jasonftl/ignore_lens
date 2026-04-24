@@ -1,4 +1,4 @@
-// Date: 09/01/2026
+// Date: 24/04/2026
 // Centralised list of supported ignore file formats
 
 /**
@@ -57,7 +57,6 @@ export const GITIGNORE_STYLE_FILES: readonly string[] = [
 export const MINIMATCH_STYLE_FILES: readonly string[] = [
     '.gcloudignore',
     '.npmignore',
-    '.p4ignore',
     '.vscodeignore',
 ];
 
@@ -103,6 +102,17 @@ export const CVSIGNORE_STYLE_FILES: readonly string[] = [
 ];
 
 /**
+ * P4ignore-style files (Perforce).
+ * Leading `/` or `\` anchors the rule to the ignore file's directory.
+ * Rules without path separators are applied recursively (basename matching, like gitignore).
+ * Uses first-match-wins evaluation (opposite of gitignore's last-match-wins).
+ * Handled by: P4ignoreParser, GitignoreMatcher, P4ignoreCountCalculator
+ */
+export const P4IGNORE_STYLE_FILES: readonly string[] = [
+    '.p4ignore',
+];
+
+/**
  * All supported ignore file formats.
  */
 export const ALL_SUPPORTED_FILES: readonly string[] = [
@@ -112,4 +122,5 @@ export const ALL_SUPPORTED_FILES: readonly string[] = [
     ...TFIGNORE_STYLE_FILES,
     ...DOCKERIGNORE_STYLE_FILES,
     ...CVSIGNORE_STYLE_FILES,
+    ...P4IGNORE_STYLE_FILES,
 ];

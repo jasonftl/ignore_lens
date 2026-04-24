@@ -10,7 +10,7 @@ import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
-import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES, GLOB_NO_NEGATION_FILES, TFIGNORE_STYLE_FILES, DOCKERIGNORE_STYLE_FILES, CVSIGNORE_STYLE_FILES } from './supportedFiles';
+import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES, GLOB_NO_NEGATION_FILES, TFIGNORE_STYLE_FILES, DOCKERIGNORE_STYLE_FILES, CVSIGNORE_STYLE_FILES, P4IGNORE_STYLE_FILES } from './supportedFiles';
 
 /**
  * Provides line decorations for ignore files.
@@ -74,6 +74,11 @@ export class DecorationProvider implements vscode.Disposable {
         // Check if file uses cvsignore semantics
         if (CVSIGNORE_STYLE_FILES.includes(fileName)) {
             return 'cvsignore';
+        }
+
+        // Check if file uses p4ignore semantics
+        if (P4IGNORE_STYLE_FILES.includes(fileName)) {
+            return 'p4ignore';
         }
 
         // All other supported files use gitignore semantics
@@ -446,8 +451,10 @@ export class DecorationProvider implements vscode.Disposable {
         let patternCount = 0;
         // Cumulative set tracking which files are ignored
         const cumulativeSet = new Set<string>();
-        // Track ignored directories to block negations for files under them
+        // Track ignored directories to block negations for files under them (gitignore only)
         const ignoredDirs = new Set<string>();
+        // Track files already decided by an earlier pattern (p4ignore first-match-wins only)
+        const decidedSet = new Set<string>();
         // Accumulators for debug summary totals
         let totalShadowed = 0;   // Sum of ≡ (noActionCount for normal patterns)
         let totalNotInSet = 0;   // Sum of ∅ (noActionCount for negation patterns)
@@ -467,7 +474,7 @@ export class DecorationProvider implements vscode.Disposable {
             const lineLength = line.text.length;
 
             // Calculate counts using cumulative set tracking (strategy handles blocking rules)
-            const countResult = countCalculator.calculateCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern);
+            const countResult = countCalculator.calculateCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern, decidedSet);
             const actionCount = countResult.actionCount;
             const noActionCount = countResult.noActionCount;
             const blockedCount = countResult.blockedCount;
