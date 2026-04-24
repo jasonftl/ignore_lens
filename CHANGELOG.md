@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+## [1.0.0] - 24/04/2026
+
 ### Changed
 - Pattern-matching hot path now compiles each glob once per pattern instead of once per file (ISSUE-M025)
   - `VscodeignoreMatcher.findMatches`, `GlobNoNegationMatcher.findMatches`, and the character-class fallback in `GitignoreMatcher` all construct a `Minimatch` instance per pattern and reuse it across every workspace file
