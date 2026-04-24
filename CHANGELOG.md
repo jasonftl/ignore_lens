@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Pattern-matching hot path now compiles each glob once per pattern instead of once per file (ISSUE-M025)
+  - `VscodeignoreMatcher.findMatches`, `GlobNoNegationMatcher.findMatches`, and the character-class fallback in `GitignoreMatcher` all construct a `Minimatch` instance per pattern and reuse it across every workspace file
+  - Eliminates hundreds of thousands of redundant glob→regex compilations per decoration update on large workspaces
+  - Semantics unchanged: all option sets (`dot`, `nonegate`, `nocomment`, `matchBase`) preserved exactly
+
+### Fixed
+- Removed unused `vscode` import from `decorationCache.ts` (ISSUE-L022)
+- Corrected stale `Handled by:` JSDoc in `supportedFiles.ts` for `.bzrignore`/`.chefignore` and `.cvsignore` — they are routed through `GlobNoNegationMatcher`, not `VscodeignoreMatcher` (ISSUE-L023)
+- Removed dead `maxCol2Width` field from the decoration cache pipeline; col2 is the terminal column and was never padded (ISSUE-L024)
+
 ## [0.9.1] - 11/01/2026
 
 ### Added

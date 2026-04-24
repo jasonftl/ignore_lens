@@ -65,7 +65,7 @@ export const MINIMATCH_STYLE_FILES: readonly string[] = [
  * Glob-style files without negation support.
  * These use strict glob matching like minimatch, but do not support negation patterns.
  * Lines starting with ! are treated as literal patterns (matching files starting with !).
- * Handled by: GlobNoNegationParser, VscodeignoreMatcher, VscodeignoreCountCalculator
+ * Handled by: GlobNoNegationParser, GlobNoNegationMatcher, VscodeignoreCountCalculator
  */
 export const GLOB_NO_NEGATION_FILES: readonly string[] = [
     '.bzrignore',
@@ -96,7 +96,7 @@ export const DOCKERIGNORE_STYLE_FILES: readonly string[] = [
  * Cvsignore-style files.
  * These use simple glob matching (root only), no # comments, no negation.
  * The ! alone clears the list (skipped for IgnoreLens), # is literal.
- * Handled by: CvsignoreParser, VscodeignoreMatcher, VscodeignoreCountCalculator
+ * Handled by: CvsignoreParser, GlobNoNegationMatcher, VscodeignoreCountCalculator
  */
 export const CVSIGNORE_STYLE_FILES: readonly string[] = [
     '.cvsignore',

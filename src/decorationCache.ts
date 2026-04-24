@@ -1,7 +1,5 @@
-// Date: 05/01/2026
+// Date: 24/04/2026
 // Caches decoration data for instant display on tab switch
-
-import * as vscode from 'vscode';
 
 /**
  * Data for a single line's decoration.
@@ -21,12 +19,12 @@ export interface LineDecorationData {
 
 /**
  * Cached decoration data for a document.
+ * col2 does not need alignment (it is the last column rendered) so its width is not tracked.
  */
 export interface CachedDecorations {
     lineData: LineDecorationData[];
     maxLineLength: number;
     maxCol1Width: number;
-    maxCol2Width: number;
     maxCol3Width: number;
     timestamp: number;
 }

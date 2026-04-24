@@ -1,9 +1,9 @@
-// Date: 05/01/2026
+// Date: 24/04/2026
 // Strategy pattern for pattern matching in different ignore file types
 // Gitignore uses fnmatch with basename matching; vscodeignore uses minimatch without
 
 import ignore, { Ignore } from 'ignore';
-import { minimatch } from 'minimatch';
+import { minimatch, Minimatch } from 'minimatch';
 import { MatchResult, IgnoreFileType } from './types';
 
 /**
@@ -53,6 +53,10 @@ function needsMinimatchFallback(pattern: string): boolean {
  * Uses matchBase option so patterns match anywhere in the path (gitignore behaviour).
  * Handles anchored patterns (leading /) by matching from the root.
  *
+ * ISSUE-M025 optimisation: the pattern is compiled once into a Minimatch instance
+ * (or a pair of instances for the non-anchored matchBase + full-path case) before
+ * iterating files, avoiding one regex compilation per file.
+ *
  * @param pattern - The gitignore pattern (without negation prefix)
  * @param files - Array of file paths to match against
  * @returns Array of matching file paths
@@ -70,36 +74,33 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
     // /[ab]/file.txt should match a/file.txt or b/file.txt
     const anchoredHasSubpath = isAnchored && cleanPattern.includes('/');
 
-    for (const file of files) {
-        if (isAnchored) {
-            if (anchoredHasSubpath) {
-                // Pattern has subpath structure, match against full path
-                // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-                const matches = minimatch(file, cleanPattern, { dot: true });
-                if (matches) {
-                    matchingFiles.push(file);
-                }
-            } else {
-                // Pattern has no subpath, only match root-level files (no / in path)
-                const isRootLevel = !file.includes('/');
-                if (!isRootLevel) {
-                    continue;  // Skip non-root files for simple anchored patterns
-                }
-                // Match against cleaned pattern (without leading /)
-                // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-                const matches = minimatch(file, cleanPattern, { dot: true });
-                if (matches) {
-                    matchingFiles.push(file);
-                }
+    // Compile once, reuse for every file (ISSUE-M025)
+    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
+    if (isAnchored && !anchoredHasSubpath) {
+        // Simple anchored pattern: only test root-level files against cleaned pattern
+        const rootMatcher = new Minimatch(cleanPattern, { dot: true });
+        for (const file of files) {
+            if (file.includes('/')) {
+                continue;  // Skip non-root files for simple anchored patterns
             }
-        } else {
-            // Non-anchored: try matching with matchBase (pattern matches basename)
-            // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-            const matchesBase = minimatch(file, cleanPattern, { matchBase: true, dot: true });
-            // Also try matching the full path
-            const matchesFull = minimatch(file, cleanPattern, { dot: true });
-
-            if (matchesBase || matchesFull) {
+            if (rootMatcher.match(file)) {
+                matchingFiles.push(file);
+            }
+        }
+    } else if (isAnchored) {
+        // Anchored with subpath: match against full path
+        const fullMatcher = new Minimatch(cleanPattern, { dot: true });
+        for (const file of files) {
+            if (fullMatcher.match(file)) {
+                matchingFiles.push(file);
+            }
+        }
+    } else {
+        // Non-anchored: combine basename and full-path matching
+        const baseMatcher = new Minimatch(cleanPattern, { matchBase: true, dot: true });
+        const fullMatcher = new Minimatch(cleanPattern, { dot: true });
+        for (const file of files) {
+            if (baseMatcher.match(file) || fullMatcher.match(file)) {
                 matchingFiles.push(file);
             }
         }
@@ -231,6 +232,9 @@ export class VscodeignoreMatcher implements IPatternMatcher {
      * Finds all files that match the given vscodeignore pattern.
      * Uses minimatch without matchBase - patterns are strict.
      *
+     * ISSUE-M025 optimisation: compile the pattern into a Minimatch instance once
+     * and reuse it across every file in the workspace.
+     *
      * @param pattern - The vscodeignore pattern to match against
      * @param files - Array of file paths (relative, with forward slashes)
      * @returns MatchResult containing matched files
@@ -245,13 +249,15 @@ export class VscodeignoreMatcher implements IPatternMatcher {
 
         const matchingFiles: string[] = [];
 
+        // Compile once, reuse for every file (ISSUE-M025)
+        // NO matchBase option - *.log only matches root level
+        // Use { dot: true } to match dotfiles
+        // Use { nonegate: true } so literal ! in patterns (e.g. from bzrignore) isn't treated as negation
+        // (We handle negation ourselves by stripping the ! prefix above)
+        const matcher = new Minimatch(cleanPattern, { dot: true, nonegate: true });
+
         for (const file of files) {
-            // NO matchBase option - *.log only matches root level
-            // Use { dot: true } to match dotfiles
-            // Use { nonegate: true } so literal ! in patterns (e.g. from bzrignore) isn't treated as negation
-            // (We handle negation ourselves by stripping the ! prefix above)
-            const matches = minimatch(file, cleanPattern, { dot: true, nonegate: true });
-            if (matches) {
+            if (matcher.match(file)) {
                 matchingFiles.push(file);
             }
         }
@@ -311,6 +317,9 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
      * Finds all files that match the given pattern.
      * Never treats ! as negation - it's always a literal character.
      *
+     * ISSUE-M025 optimisation: compile the pattern into a Minimatch instance once
+     * and reuse it across every file in the workspace.
+     *
      * @param pattern - The pattern to match against
      * @param files - Array of file paths (relative, with forward slashes)
      * @returns MatchResult containing matched files
@@ -325,13 +334,15 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
 
         const matchingFiles: string[] = [];
 
+        // Compile once, reuse for every file (ISSUE-M025)
+        // NO matchBase option - *.log only matches root level
+        // Use { dot: true } to match dotfiles
+        // Use { nonegate: true } so ! in patterns is treated as literal
+        // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
+        const matcher = new Minimatch(cleanPattern, { dot: true, nonegate: true, nocomment: true });
+
         for (const file of files) {
-            // NO matchBase option - *.log only matches root level
-            // Use { dot: true } to match dotfiles
-            // Use { nonegate: true } so ! in patterns is treated as literal
-            // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
-            const matches = minimatch(file, cleanPattern, { dot: true, nonegate: true, nocomment: true });
-            if (matches) {
+            if (matcher.match(file)) {
                 matchingFiles.push(file);
             }
         }

@@ -352,7 +352,7 @@ export class DecorationProvider implements vscode.Disposable {
 
         // Collect line data using helper method
         const collectionResult = this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles);
-        const { lineData, maxLineLength, maxCol1Width, maxCol2Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
+        const { lineData, maxLineLength, maxCol1Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
 
         // Log accurate summary using cumulative set data
         const logger = getLogger();
@@ -376,7 +376,6 @@ export class DecorationProvider implements vscode.Disposable {
             lineData: lineData,
             maxLineLength: maxLineLength,
             maxCol1Width: maxCol1Width,
-            maxCol2Width: maxCol2Width,
             maxCol3Width: maxCol3Width,
             timestamp: Date.now()
         };
@@ -422,7 +421,6 @@ export class DecorationProvider implements vscode.Disposable {
         lineData: LineDecorationData[];
         maxLineLength: number;
         maxCol1Width: number;
-        maxCol2Width: number;
         maxCol3Width: number;
         totalShadowed: number;
         totalNotInSet: number;
@@ -513,17 +511,13 @@ export class DecorationProvider implements vscode.Disposable {
         const patternDuration = Date.now() - patternStartTime;
         logger.logTiming('Pattern matching: ' + patternCount + ' patterns', patternDuration);
 
-        // Calculate max column widths for alignment
+        // Calculate max column widths for alignment (col2 is last, needs no padding)
         let maxCol1Width = 0;
-        let maxCol2Width = 0;
         let maxCol3Width = 0;
 
         for (const data of lineData) {
             if (data.col1.length > maxCol1Width) {
                 maxCol1Width = data.col1.length;
-            }
-            if (data.col2.length > maxCol2Width) {
-                maxCol2Width = data.col2.length;
             }
             if (data.col3.length > maxCol3Width) {
                 maxCol3Width = data.col3.length;
@@ -534,7 +528,6 @@ export class DecorationProvider implements vscode.Disposable {
             lineData,
             maxLineLength,
             maxCol1Width,
-            maxCol2Width,
             maxCol3Width,
             totalShadowed,
             totalNotInSet,
