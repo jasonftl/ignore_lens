@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unused `vscode` import from `decorationCache.ts` (ISSUE-L022)
 - Corrected stale `Handled by:` JSDoc in `supportedFiles.ts` for `.bzrignore`/`.chefignore` and `.cvsignore` — they are routed through `GlobNoNegationMatcher`, not `VscodeignoreMatcher` (ISSUE-L023)
 - Removed dead `maxCol2Width` field from the decoration cache pipeline; col2 is the terminal column and was never padded (ISSUE-L024)
+- Wildcard gitignore directory patterns (e.g. `[ab]/`, `build-*/`, `src/build-*/`) now correctly block later negations for files under the concrete directories they matched (ISSUE-M024)
+  - Concrete prefixes are derived from the pattern's `matchingFiles` (not from the literal wildcard pattern), so `[ab]/` followed by `!a/file.txt` now leaves `a/file.txt` ignored, matching git's actual behaviour
+  - Non-wildcard directory patterns continue to store exactly one prefix each (no regression)
 
 ## [0.9.1] - 11/01/2026
 

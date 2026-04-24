@@ -85,36 +85,65 @@ function normaliseDirectoryPrefix(pattern: string): string {
 
 /**
  * Extracts directory prefixes from a directory-style pattern.
- * Only explicit directory patterns (ending with /) block negations.
+ * Only explicit directory patterns (ending with a slash) block negations.
+ *
+ * For non-wildcard patterns, the prefix is derived from the pattern itself
+ * via normaliseDirectoryPrefix. For wildcard directory patterns (containing
+ * unescaped *, ?, or [ ] in a directory component), the literal pattern cannot
+ * be used as a prefix. Instead, concrete prefixes are derived from the files
+ * that actually matched the pattern during this pass: the first N path
+ * segments of each matched file, where N is the number of segments in the
+ * pattern itself (ISSUE-M024).
  *
  * @param pattern - The original pattern string
- * @param isDirectory - Whether pattern explicitly ends with /
+ * @param isDirectory - Whether pattern explicitly ends with a slash
+ * @param matchingFiles - Files that matched the pattern (used for wildcard case)
  * @returns Set of directory prefixes to add to ignoredDirs
  */
-function extractDirectoryPrefixes(pattern: string, isDirectory: boolean): Set<string> {
+function extractDirectoryPrefixes(pattern: string, isDirectory: boolean, matchingFiles: string[]): Set<string> {
     const prefixes = new Set<string>();
 
-    if (isDirectory) {
-        // Remove leading / for checking wildcards (anchored patterns)
-        let patternToCheck = pattern;
-        if (patternToCheck.startsWith('/')) {
-            patternToCheck = patternToCheck.substring(1);
-        }
-
-        // If pattern contains unescaped *, ?, or [ it's a glob pattern not a simple directory
-        // Character classes like [ab]/ should be treated as wildcards (match multiple directories)
-        const patternWithoutTrailingSlash = patternToCheck.endsWith('/') ? patternToCheck.slice(0, -1) : patternToCheck;
-        const hasUnescapedWildcards = /(?<!\\)[*?\[]/.test(patternWithoutTrailingSlash);
-        if (hasUnescapedWildcards) {
-            return prefixes;
-        }
-
-        // Derive prefix from pattern itself
-        const normalised = normaliseDirectoryPrefix(pattern);
-        prefixes.add(normalised);
+    if (!isDirectory) {
         return prefixes;
     }
 
+    // Remove leading / for checking wildcards (anchored patterns)
+    let patternToCheck = pattern;
+    if (patternToCheck.startsWith('/')) {
+        patternToCheck = patternToCheck.substring(1);
+    }
+
+    // If pattern contains unescaped *, ?, or [ it's a glob pattern not a simple directory
+    // Character classes like [ab]/ should be treated as wildcards (match multiple directories)
+    const patternWithoutTrailingSlash = patternToCheck.endsWith('/') ? patternToCheck.slice(0, -1) : patternToCheck;
+    const hasUnescapedWildcards = /(?<!\\)[*?\[]/.test(patternWithoutTrailingSlash);
+
+    if (hasUnescapedWildcards) {
+        // ISSUE-M024: derive concrete prefixes from matched files
+        // Pattern segment count = number of slash-separated segments in the
+        // pattern (excluding the trailing /). For each matched file, take that
+        // many leading segments as a concrete ignored-directory prefix.
+        if (patternWithoutTrailingSlash === '') {
+            return prefixes;
+        }
+        const patternSegments = patternWithoutTrailingSlash.split('/');
+        const segmentCount = patternSegments.length;
+
+        for (const file of matchingFiles) {
+            const fileSegments = file.split('/');
+            if (fileSegments.length < segmentCount) {
+                // Defensive: matcher shouldn't yield shorter paths, but skip if it did
+                continue;
+            }
+            const prefix = fileSegments.slice(0, segmentCount).join('/') + '/';
+            prefixes.add(prefix);
+        }
+        return prefixes;
+    }
+
+    // Non-wildcard: derive prefix from pattern itself
+    const normalised = normaliseDirectoryPrefix(pattern);
+    prefixes.add(normalised);
     return prefixes;
 }
 
@@ -198,9 +227,10 @@ export class GitignoreCountCalculator implements ICountCalculator {
             }
         }
 
-        // For normal patterns, extract and add directory prefixes to block future negations
+        // For normal patterns, extract and add directory prefixes to block future negations.
+        // Wildcard directory patterns use matchingFiles to derive concrete prefixes (ISSUE-M024).
         if (!isNegation) {
-            const dirPrefixes = extractDirectoryPrefixes(pattern, isDirectory);
+            const dirPrefixes = extractDirectoryPrefixes(pattern, isDirectory, matchingFiles);
             for (const prefix of dirPrefixes) {
                 ignoredDirs.add(prefix);
             }

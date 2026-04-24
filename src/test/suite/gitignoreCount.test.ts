@@ -577,8 +577,12 @@ suite('GitignoreCountCalculator Test Suite', () => {
                 assert.strictEqual(cumulativeSet.size, 2);
             });
 
-            test('should allow negations for files under character class matched directories', () => {
-                // Bug fix ISSUE-M007: Negations under [ab]/ matched dirs should work
+            test('should block negations for files under character class matched directories', () => {
+                // ISSUE-M024: Wildcard directory patterns like [ab]/ must block later negations
+                // for files under the concrete directories they matched. Git treats `[ab]/`
+                // followed by `!a/file.txt` as leaving `a/file.txt` ignored, because the
+                // parent directory `a/` is ignored and git does not re-include files under
+                // ignored directories.
                 const cumulativeSet = new Set<string>();
                 const ignoredDirs = new Set<string>();
 
@@ -586,13 +590,74 @@ suite('GitignoreCountCalculator Test Suite', () => {
                 const files = ['a/file.txt', 'b/file.txt'];
                 calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, '[ab]/');
                 assert.strictEqual(cumulativeSet.size, 2);
-                // ignoredDirs should be empty (pattern is a wildcard)
-                assert.strictEqual(ignoredDirs.size, 0);
+                // Concrete prefixes a/ and b/ should be stored (NOT the literal [ab]/)
+                assert.ok(ignoredDirs.has('a/'), 'a/ should be stored as concrete prefix');
+                assert.ok(ignoredDirs.has('b/'), 'b/ should be stored as concrete prefix');
+                assert.ok(!ignoredDirs.has('[ab]/'), '[ab]/ should NOT be stored literally');
 
-                // Pattern 2: !a/file.txt should work (not blocked)
+                // Pattern 2: !a/file.txt should be BLOCKED (parent a/ is ignored)
                 const result2 = calculator.calculateCount(['a/file.txt'], true, false, cumulativeSet, ignoredDirs, '!a/file.txt');
-                assert.strictEqual(result2.actionCount, 1);  // Successfully removed
-                assert.strictEqual(result2.blockedCount, 0);  // Not blocked
+                assert.strictEqual(result2.actionCount, 0);
+                assert.strictEqual(result2.blockedCount, 1);
+                assert.strictEqual(result2.setSize, 2);  // a/file.txt still ignored
+            });
+
+            test('should block negations under wildcard directory pattern build-*/', () => {
+                // ISSUE-M024: build-*/ matching build-1/ and build-2/ must block
+                // later negations for files under those concrete directories.
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                const files = ['build-1/keep.txt', 'build-1/other.txt', 'build-2/bar.txt'];
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, 'build-*/');
+                assert.ok(ignoredDirs.has('build-1/'));
+                assert.ok(ignoredDirs.has('build-2/'));
+
+                const result = calculator.calculateCount(['build-1/keep.txt'], true, false, cumulativeSet, ignoredDirs, '!build-1/keep.txt');
+                assert.strictEqual(result.actionCount, 0);
+                assert.strictEqual(result.blockedCount, 1);
+            });
+
+            test('should block negations under nested wildcard directory pattern src/build-*/', () => {
+                // ISSUE-M024: segment-count-aware prefix derivation for deeper patterns.
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                const files = ['src/build-1/lib.o', 'src/build-2/lib.o'];
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, 'src/build-*/');
+                assert.ok(ignoredDirs.has('src/build-1/'));
+                assert.ok(ignoredDirs.has('src/build-2/'));
+
+                const result = calculator.calculateCount(['src/build-1/lib.o'], true, false, cumulativeSet, ignoredDirs, '!src/build-1/lib.o');
+                assert.strictEqual(result.actionCount, 0);
+                assert.strictEqual(result.blockedCount, 1);
+            });
+
+            test('should block negations for anchored wildcard directory pattern /[ab]/', () => {
+                // ISSUE-M024: anchored wildcard directory patterns still derive concrete prefixes.
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                const files = ['a/file.txt', 'b/file.txt'];
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, '/[ab]/');
+                assert.ok(ignoredDirs.has('a/'));
+                assert.ok(ignoredDirs.has('b/'));
+
+                const result = calculator.calculateCount(['a/file.txt'], true, false, cumulativeSet, ignoredDirs, '!a/file.txt');
+                assert.strictEqual(result.blockedCount, 1);
+            });
+
+            test('non-wildcard directory foo/ retains single-prefix storage (no wildcard path regression)', () => {
+                // ISSUE-M024 regression guard: make sure the wildcard-derivation code path
+                // is NOT triggered for plain non-wildcard directory patterns. foo/ should
+                // still store exactly one prefix (itself), not N prefixes (one per file).
+                const cumulativeSet = new Set<string>();
+                const ignoredDirs = new Set<string>();
+
+                const files = ['foo/a.txt', 'foo/b.txt', 'foo/sub/c.txt'];
+                calculator.calculateCount(files, false, true, cumulativeSet, ignoredDirs, 'foo/');
+                assert.strictEqual(ignoredDirs.size, 1);
+                assert.ok(ignoredDirs.has('foo/'));
             });
         });
     });
