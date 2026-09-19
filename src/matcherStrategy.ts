@@ -6,6 +6,23 @@ import ignore, { Ignore } from 'ignore';
 import { minimatch, Minimatch } from 'minimatch';
 import { MatchResult, IgnoreFileType } from './types';
 
+const MAX_PATTERN_CACHE_SIZE = 200;
+
+function getCompiledPattern<T>(cache: Map<string, T>, pattern: string, compile: () => T): T {
+    const cached = cache.get(pattern);
+    if (cached) {
+        return cached;
+    }
+
+    if (cache.size >= MAX_PATTERN_CACHE_SIZE) {
+        cache.clear();
+    }
+
+    const compiled = compile();
+    cache.set(pattern, compiled);
+    return compiled;
+}
+
 /**
  * Interface for pattern matchers.
  */
@@ -115,6 +132,8 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
  * Falls back to minimatch for character class patterns without wildcards.
  */
 export class GitignoreMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, Ignore>();
+
     /**
      * Finds all files that match the given gitignore pattern.
      *
@@ -135,8 +154,7 @@ export class GitignoreMatcher implements IPatternMatcher {
             matchingFiles = matchWithMinimatchBasename(cleanPattern, files);
         } else {
             // Use the ignore package for standard patterns
-            const ig: Ignore = ignore();
-            ig.add(cleanPattern);
+            const ig = getCompiledPattern(this.patternCache, cleanPattern, () => ignore().add(cleanPattern));
 
             for (const file of files) {
                 // The ignores() method returns true if the file matches the pattern
@@ -213,6 +231,8 @@ export class GitignoreMatcher implements IPatternMatcher {
  * Auto-expands folder/ to folder/** before matching.
  */
 export class VscodeignoreMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, Minimatch>();
+
     /**
      * Expands a folder pattern to include all contents.
      * vsce does: patterns like "folder/" become "folder/**"
@@ -254,7 +274,11 @@ export class VscodeignoreMatcher implements IPatternMatcher {
         // Use { dot: true } to match dotfiles
         // Use { nonegate: true } so literal ! in patterns (e.g. from bzrignore) isn't treated as negation
         // (We handle negation ourselves by stripping the ! prefix above)
-        const matcher = new Minimatch(cleanPattern, { dot: true, nonegate: true });
+        const matcher = getCompiledPattern(
+            this.patternCache,
+            cleanPattern,
+            () => new Minimatch(cleanPattern, { dot: true, nonegate: true })
+        );
 
         for (const file of files) {
             if (matcher.match(file)) {
@@ -299,6 +323,8 @@ export class VscodeignoreMatcher implements IPatternMatcher {
  * The # character at the start of a pattern matches a literal # in filenames (cvsignore).
  */
 export class GlobNoNegationMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, Minimatch>();
+
     /**
      * Expands a folder pattern to include all contents.
      * folder/ becomes folder/**
@@ -339,7 +365,11 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
         // Use { dot: true } to match dotfiles
         // Use { nonegate: true } so ! in patterns is treated as literal
         // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
-        const matcher = new Minimatch(cleanPattern, { dot: true, nonegate: true, nocomment: true });
+        const matcher = getCompiledPattern(
+            this.patternCache,
+            cleanPattern,
+            () => new Minimatch(cleanPattern, { dot: true, nonegate: true, nocomment: true })
+        );
 
         for (const file of files) {
             if (matcher.match(file)) {

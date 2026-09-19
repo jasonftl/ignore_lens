@@ -12,6 +12,17 @@ import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
 import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES, GLOB_NO_NEGATION_FILES, TFIGNORE_STYLE_FILES, DOCKERIGNORE_STYLE_FILES, CVSIGNORE_STYLE_FILES, P4IGNORE_STYLE_FILES } from './supportedFiles';
 
+interface LineCollectionResult {
+    lineData: LineDecorationData[];
+    maxLineLength: number;
+    maxCol1Width: number;
+    maxCol3Width: number;
+    totalShadowed: number;
+    totalNotInSet: number;
+    totalBlocked: number;
+    finalSetSize: number;
+}
+
 /**
  * Provides line decorations for ignore files.
  * Shows visual feedback indicating whether patterns match files in the workspace.
@@ -26,6 +37,7 @@ export class DecorationProvider implements vscode.Disposable {
     private updateVersion: number = 0;
     private currentStyle: DecorationStyle;
     private showMatchCount: boolean;
+    private readonly matchers = new Map<IgnoreFileType, IPatternMatcher>();
 
     /**
      * Creates a new DecorationProvider.
@@ -266,24 +278,31 @@ export class DecorationProvider implements vscode.Disposable {
         this.updateVersion = this.updateVersion + 1;
         const thisVersion = this.updateVersion;
 
+        try {
+            await this.runUpdate(editor, thisVersion);
+        } catch (error) {
+            if (thisVersion !== this.updateVersion) {
+                return;
+            }
+
+            const logger = getLogger();
+            logger.log('Decoration update failed: ' + String(error));
+            try {
+                this.clearDecorations(editor);
+            } catch (clearError) {
+                logger.log('Failed to clear decorations: ' + String(clearError));
+            }
+        }
+    }
+
+    private async runUpdate(editor: vscode.TextEditor, thisVersion: number): Promise<void> {
         // Check if extension is enabled
         const config = vscode.workspace.getConfiguration('ignorelens');
         const enabled = config.get<boolean>('enabled', true);
 
         // Clear all decorations (normal and stale) if disabled
         if (!enabled) {
-            if (this.noMatchDecorationType) {
-                editor.setDecorations(this.noMatchDecorationType, []);
-            }
-            if (this.matchCountDecorationType) {
-                editor.setDecorations(this.matchCountDecorationType, []);
-            }
-            if (this.staleNoMatchDecorationType) {
-                editor.setDecorations(this.staleNoMatchDecorationType, []);
-            }
-            if (this.staleMatchCountDecorationType) {
-                editor.setDecorations(this.staleMatchCountDecorationType, []);
-            }
+            this.clearDecorations(editor);
             return;
         }
 
@@ -307,7 +326,11 @@ export class DecorationProvider implements vscode.Disposable {
         // Detect file type and get appropriate strategies
         const fileType = this.detectFileType(document);
         const parser: ILineParser = getParser(fileType);
-        const matcher: IPatternMatcher = getMatcher(fileType);
+        let matcher = this.matchers.get(fileType);
+        if (!matcher) {
+            matcher = getMatcher(fileType);
+            this.matchers.set(fileType, matcher);
+        }
         const countCalculator: ICountCalculator = getCountCalculator(fileType);
         const noMatchDecorations: vscode.DecorationOptions[] = [];
         const matchCountDecorations: vscode.DecorationOptions[] = [];
@@ -316,18 +339,7 @@ export class DecorationProvider implements vscode.Disposable {
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (!workspaceFolder) {
             // Clear all decorations (stale decorations may have been applied above)
-            if (this.noMatchDecorationType) {
-                editor.setDecorations(this.noMatchDecorationType, []);
-            }
-            if (this.matchCountDecorationType) {
-                editor.setDecorations(this.matchCountDecorationType, []);
-            }
-            if (this.staleNoMatchDecorationType) {
-                editor.setDecorations(this.staleNoMatchDecorationType, []);
-            }
-            if (this.staleMatchCountDecorationType) {
-                editor.setDecorations(this.staleMatchCountDecorationType, []);
-            }
+            this.clearDecorations(editor);
             return;
         }
 
@@ -356,7 +368,11 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Collect line data using helper method
-        const collectionResult = this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles);
+        const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, thisVersion);
+        if (!collectionResult) {
+            getLogger().log('Cancelled stale decoration update (version ' + thisVersion + ')');
+            return;
+        }
         const { lineData, maxLineLength, maxCol1Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
 
         // Log accurate summary using cumulative set data
@@ -405,6 +421,19 @@ export class DecorationProvider implements vscode.Disposable {
         logger.log('Decoration update complete (fresh data applied)');
     }
 
+    private clearDecorations(editor: vscode.TextEditor): void {
+        for (const decorationType of [
+            this.noMatchDecorationType,
+            this.matchCountDecorationType,
+            this.staleNoMatchDecorationType,
+            this.staleMatchCountDecorationType
+        ]) {
+            if (decorationType) {
+                editor.setDecorations(decorationType, []);
+            }
+        }
+    }
+
     /**
      * Collects line data for all patterns in the document.
      * Calculates match counts, column strings, and summary statistics.
@@ -416,22 +445,14 @@ export class DecorationProvider implements vscode.Disposable {
      * @param workspaceFiles - List of workspace files to match against
      * @returns Collection result with line data and statistics
      */
-    private collectLineData(
+    private async collectLineData(
         document: vscode.TextDocument,
         parser: ILineParser,
         matcher: IPatternMatcher,
         countCalculator: ICountCalculator,
-        workspaceFiles: string[]
-    ): {
-        lineData: LineDecorationData[];
-        maxLineLength: number;
-        maxCol1Width: number;
-        maxCol3Width: number;
-        totalShadowed: number;
-        totalNotInSet: number;
-        totalBlocked: number;
-        finalSetSize: number;
-    } {
+        workspaceFiles: string[],
+        thisVersion: number
+    ): Promise<LineCollectionResult | undefined> {
         const lineData: LineDecorationData[] = [];
         let maxLineLength = 0;
 
@@ -449,6 +470,7 @@ export class DecorationProvider implements vscode.Disposable {
         const logger = getLogger();
         const patternStartTime = Date.now();
         let patternCount = 0;
+        const patternsPerYield = Math.max(1, Math.floor(10000 / Math.max(1, workspaceFiles.length)));
         // Cumulative set tracking which files are ignored
         const cumulativeSet = new Set<string>();
         // Track ignored directories to block negations for files under them (gitignore only)
@@ -469,12 +491,22 @@ export class DecorationProvider implements vscode.Disposable {
                 continue;
             }
 
-            // Check pattern against workspace files
-            const matchResult = matcher.findMatches(parsedLine.pattern, workspaceFiles);
+            if (patternCount > 0 && patternCount % patternsPerYield === 0) {
+                await new Promise<void>(resolve => setImmediate(resolve));
+                if (thisVersion !== this.updateVersion) {
+                    return undefined;
+                }
+            }
+
+            // Check the pattern in chunks so large workspaces remain cancellable.
+            const matchingFiles = await this.findMatchesCooperatively(matcher, parsedLine.pattern, workspaceFiles, thisVersion);
+            if (!matchingFiles) {
+                return undefined;
+            }
             const lineLength = line.text.length;
 
             // Calculate counts using cumulative set tracking (strategy handles blocking rules)
-            const countResult = countCalculator.calculateCount(matchResult.matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern, decidedSet);
+            const countResult = countCalculator.calculateCount(matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern, decidedSet);
             const actionCount = countResult.actionCount;
             const noActionCount = countResult.noActionCount;
             const blockedCount = countResult.blockedCount;
@@ -541,6 +573,31 @@ export class DecorationProvider implements vscode.Disposable {
             totalBlocked,
             finalSetSize: cumulativeSet.size
         };
+    }
+
+    private async findMatchesCooperatively(
+        matcher: IPatternMatcher,
+        pattern: string,
+        files: string[],
+        thisVersion: number
+    ): Promise<string[] | undefined> {
+        const chunkSize = 10000;
+        if (files.length <= chunkSize) {
+            return matcher.findMatches(pattern, files).matchingFiles;
+        }
+
+        const matchingFiles: string[] = [];
+        for (let offset = 0; offset < files.length; offset = offset + chunkSize) {
+            const chunk = files.slice(offset, offset + chunkSize);
+            matchingFiles.push(...matcher.findMatches(pattern, chunk).matchingFiles);
+
+            await new Promise<void>(resolve => setImmediate(resolve));
+            if (thisVersion !== this.updateVersion) {
+                return undefined;
+            }
+        }
+
+        return matchingFiles;
     }
 
     /**
@@ -698,6 +755,9 @@ export class DecorationProvider implements vscode.Disposable {
     public triggerUpdateDecorations(editor: vscode.TextEditor, throttle: boolean = false, reason?: string): void {
         const logger = getLogger();
 
+        // Cancel matching work as soon as a newer refresh is requested.
+        this.updateVersion = this.updateVersion + 1;
+
         // Clear any pending update
         if (this.updateTimeout) {
             clearTimeout(this.updateTimeout);
@@ -712,13 +772,13 @@ export class DecorationProvider implements vscode.Disposable {
                 if (reason) {
                     logger.log('Decoration update triggered by: ' + reason);
                 }
-                this.updateDecorations(editor);
+                void this.updateDecorations(editor);
             }, debounceMs);
         } else {
             if (reason) {
                 logger.log('Decoration update triggered by: ' + reason);
             }
-            this.updateDecorations(editor);
+            void this.updateDecorations(editor);
         }
     }
 

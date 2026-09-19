@@ -33,6 +33,7 @@ Counts are colour-coded:
 ### Real-time Updates
 
 Decorations update automatically when you edit the file or when workspace files change.
+Workspace file lists are cached and updated as files are created or deleted, which avoids repeated full scans.
 
 ## Supported Files
 
@@ -162,8 +163,8 @@ The `stale` colours are shown briefly when switching tabs while cached data refr
 ## Acknowledgements
 
 Developed with assistance from:
-- [Claude Code](https://claude.ai/code) (Opus 4.5)
-- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1-Codex-Max & GPT-5.2-Codex-Max)
+- [Claude Code](https://claude.ai/code) (Opus 4.5, 4.7, 4.8 & Fable 5)
+- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1, 5.2, 5.4 & 5.5)
 
 Thanks to:
 - [GitSparTV](https://github.com/GitSparTV) for identifying the running count tracking issue.
@@ -171,6 +172,6 @@ Thanks to:
 
 ## Licence
 
-MIT License - Copyright (c) 2025 Jason Gordon
+MIT License - Copyright (c) 2025-26 Jason Gordon
 
 Free to use, modify, and distribute. See [LICENSE](LICENSE) for details.

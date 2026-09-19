@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Native `ignore` language associations for all supported filenames, so the extension activates only when an ignore file opens
+
+### Changed
+- Cached workspace file lists are now updated incrementally on file creation and deletion instead of rescanning the workspace for every refresh
+- Compiled ignore patterns are reused across refreshes with a bounded cache
+- Decoration cache entries are released when their document closes
+- Long matching passes now yield to the extension host and stop early when a newer refresh supersedes them
+- Workspace file events outside the active ignore file's scope no longer trigger decoration refreshes
+
+### Fixed
+- Decoration update failures are now logged and stale decorations are cleared instead of remaining visible indefinitely
+- Restored the documented lint command with a repository ESLint configuration
 
 ## [1.0.0] - 24/04/2026
 

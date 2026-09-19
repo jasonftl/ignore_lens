@@ -2,9 +2,11 @@
 // Main extension entry point - handles activation and coordinates components
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
 import { getLogger, disposeLogger } from './logger';
+import { decorationCache } from './decorationCache';
 
 // Module-level references to components
 let decorationProvider: DecorationProvider | undefined;
@@ -66,22 +68,38 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     context.subscriptions.push(documentOpenDisposable);
 
+    context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => {
+        decorationCache.delete(document.uri.toString());
+    }));
+
     // Register file system watcher for workspace changes
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*');
     context.subscriptions.push(fileWatcher);
 
     // Update decorations when files are created or deleted
-    const createDisposable = fileWatcher.onDidCreate((uri) => {
-        logger.log('File created: ' + uri.fsPath);
-        refreshActiveEditor('file created');
+    const createDisposable = fileWatcher.onDidCreate(uri => {
+        if (!workspaceScanner) {
+            return;
+        }
+
+        void workspaceScanner.addPath(uri).then(created => {
+            if (created) {
+                refreshActiveEditor('file created', uri);
+            }
+        }, error => logger.log('Failed to cache created file: ' + String(error)));
     });
     context.subscriptions.push(createDisposable);
 
-    const deleteDisposable = fileWatcher.onDidDelete((uri) => {
-        logger.log('File deleted: ' + uri.fsPath);
-        refreshActiveEditor('file deleted');
+    const deleteDisposable = fileWatcher.onDidDelete(uri => {
+        if (workspaceScanner?.removePath(uri)) {
+            refreshActiveEditor('file deleted', uri);
+        }
     });
     context.subscriptions.push(deleteDisposable);
+
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        refreshActiveEditor('workspace folders changed');
+    }));
 
     // Register for configuration changes
     const configDisposable = vscode.workspace.onDidChangeConfiguration(event => {
@@ -97,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Initial decoration update for the active editor
     if (vscode.window.activeTextEditor && isSupportedIgnoreFile(vscode.window.activeTextEditor.document)) {
-        decorationProvider.updateDecorations(vscode.window.activeTextEditor);
+        void decorationProvider.updateDecorations(vscode.window.activeTextEditor);
     }
 }
 
@@ -105,12 +123,33 @@ export function activate(context: vscode.ExtensionContext): void {
  * Refreshes decorations for the active editor if it's an ignore file.
  *
  * @param reason - Optional reason for the refresh (for logging)
+ * @param changedUri - Optional changed path used to filter irrelevant workspace events
  */
-function refreshActiveEditor(reason?: string): void {
+function refreshActiveEditor(reason?: string, changedUri?: vscode.Uri): void {
     const editor = vscode.window.activeTextEditor;
-    if (editor && isSupportedIgnoreFile(editor.document) && decorationProvider) {
-        decorationProvider.triggerUpdateDecorations(editor, true, reason);
+    if (!editor || !isSupportedIgnoreFile(editor.document) || !decorationProvider) {
+        return;
     }
+
+    if (changedUri) {
+        const editorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+        const changedFolder = vscode.workspace.getWorkspaceFolder(changedUri);
+        if (!editorFolder || editorFolder.uri.toString() !== changedFolder?.uri.toString()) {
+            return;
+        }
+
+        const ignoreFileDir = path.dirname(editor.document.uri.fsPath);
+        if (!isPathWithin(ignoreFileDir, changedUri.fsPath) && !isPathWithin(changedUri.fsPath, ignoreFileDir)) {
+            return;
+        }
+    }
+
+    decorationProvider.triggerUpdateDecorations(editor, true, reason);
+}
+
+function isPathWithin(parent: string, candidate: string): boolean {
+    const relative = path.relative(parent, candidate);
+    return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
 }
 
 /**

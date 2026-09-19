@@ -39,7 +39,7 @@ export interface CacheResult {
 
 /**
  * Manages cached decoration data for ignore files.
- * Uses "overwrite, never clear" strategy - stale data is always preferred over no data.
+ * Keeps stale data while a document is open and removes it when the document closes.
  */
 class DecorationCache {
     // Document URI string → cached data
@@ -72,6 +72,11 @@ class DecorationCache {
      */
     public set(uri: string, data: CachedDecorations): void {
         this.cache.set(uri, data);
+    }
+
+    /** Removes cached data for a closed document. */
+    public delete(uri: string): void {
+        this.cache.delete(uri);
     }
 
     /**

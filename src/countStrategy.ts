@@ -116,7 +116,7 @@ function extractDirectoryPrefixes(pattern: string, isDirectory: boolean, matchin
     // If pattern contains unescaped *, ?, or [ it's a glob pattern not a simple directory
     // Character classes like [ab]/ should be treated as wildcards (match multiple directories)
     const patternWithoutTrailingSlash = patternToCheck.endsWith('/') ? patternToCheck.slice(0, -1) : patternToCheck;
-    const hasUnescapedWildcards = /(?<!\\)[*?\[]/.test(patternWithoutTrailingSlash);
+    const hasUnescapedWildcards = /(?<!\\)(?:[*?]|\[)/.test(patternWithoutTrailingSlash);
 
     if (hasUnescapedWildcards) {
         // ISSUE-M024: derive concrete prefixes from matched files
