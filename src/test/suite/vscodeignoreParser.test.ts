@@ -2,7 +2,7 @@
 // Unit tests for the VscodeignoreParser class
 
 import * as assert from 'assert';
-import { VscodeignoreParser } from '../../parserStrategy';
+import { VscodeignoreParser, parseFile } from '../../parserStrategy';
 
 suite('VscodeignoreParser Test Suite', () => {
     let parser: VscodeignoreParser;
@@ -77,7 +77,7 @@ suite('VscodeignoreParser Test Suite', () => {
     suite('parseFile', () => {
         test('should parse multiple lines', () => {
             const content = '*.log\n# Comment\nnode_modules/';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 3);
             assert.strictEqual(results[0].pattern, '*.log');
@@ -87,7 +87,7 @@ suite('VscodeignoreParser Test Suite', () => {
 
         test('should handle Windows line endings', () => {
             const content = '*.log\r\n*.tmp';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 2);
             assert.strictEqual(results[0].pattern, '*.log');

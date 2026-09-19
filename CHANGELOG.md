@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decoration cache entries are released when their document closes
 - Long matching passes now yield to the extension host and stop early when a newer refresh supersedes them
 - Workspace file events outside the active ignore file's scope no longer trigger decoration refreshes
+- Parser, matcher, cache, logging, and supported-file plumbing now use smaller shared or native APIs
+- Matcher tests now use data tables while retaining the existing format and edge-case coverage
+- Removed redundant `@types/glob` and `@types/minimatch` development dependencies
 
 ### Fixed
 - Decoration update failures are now logged and stale decorations are cleared instead of remaining visible indefinitely

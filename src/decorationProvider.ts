@@ -5,12 +5,12 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { WorkspaceScanner } from './workspaceScanner';
 import { DecorationStyle, IgnoreFileType } from './types';
-import { getLogger } from './logger';
+import { log, logTiming } from './logger';
 import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData } from './decorationCache';
-import { ALL_SUPPORTED_FILES, MINIMATCH_STYLE_FILES, GLOB_NO_NEGATION_FILES, TFIGNORE_STYLE_FILES, DOCKERIGNORE_STYLE_FILES, CVSIGNORE_STYLE_FILES, P4IGNORE_STYLE_FILES } from './supportedFiles';
+import { ALL_SUPPORTED_FILES, SUPPORTED_FILE_TYPES } from './supportedFiles';
 
 interface LineCollectionResult {
     lineData: LineDecorationData[];
@@ -63,38 +63,7 @@ export class DecorationProvider implements vscode.Disposable {
     private detectFileType(document: vscode.TextDocument): IgnoreFileType {
         const fileName = path.basename(document.uri.fsPath).toLowerCase();
 
-        // Check if file uses minimatch semantics
-        if (MINIMATCH_STYLE_FILES.includes(fileName)) {
-            return 'vscodeignore';
-        }
-
-        // Check if file uses glob without negation
-        if (GLOB_NO_NEGATION_FILES.includes(fileName)) {
-            return 'glob-no-negation';
-        }
-
-        // Check if file uses tfignore semantics
-        if (TFIGNORE_STYLE_FILES.includes(fileName)) {
-            return 'tfignore';
-        }
-
-        // Check if file uses dockerignore semantics
-        if (DOCKERIGNORE_STYLE_FILES.includes(fileName)) {
-            return 'dockerignore';
-        }
-
-        // Check if file uses cvsignore semantics
-        if (CVSIGNORE_STYLE_FILES.includes(fileName)) {
-            return 'cvsignore';
-        }
-
-        // Check if file uses p4ignore semantics
-        if (P4IGNORE_STYLE_FILES.includes(fileName)) {
-            return 'p4ignore';
-        }
-
-        // All other supported files use gitignore semantics
-        return 'gitignore';
+        return SUPPORTED_FILE_TYPES[fileName] ?? 'gitignore';
     }
 
     /**
@@ -285,12 +254,11 @@ export class DecorationProvider implements vscode.Disposable {
                 return;
             }
 
-            const logger = getLogger();
-            logger.log('Decoration update failed: ' + String(error));
+            log('Decoration update failed: ' + String(error));
             try {
                 this.clearDecorations(editor);
             } catch (clearError) {
-                logger.log('Failed to clear decorations: ' + String(clearError));
+                log('Failed to clear decorations: ' + String(clearError));
             }
         }
     }
@@ -315,12 +283,11 @@ export class DecorationProvider implements vscode.Disposable {
         const documentUri = document.uri.toString();
 
         // Phase 1: Check cache and show stale decorations immediately
-        const cacheResult = decorationCache.get(documentUri);
-        if (cacheResult) {
+        const cachedDecorations = decorationCache.get(documentUri);
+        if (cachedDecorations) {
             // Apply cached data with stale (darker) colours for instant feedback
-            this.applyDecorationsFromData(editor, cacheResult.data, true);
-            const logger = getLogger();
-            logger.log('Showing cached decorations (stale) while refreshing...');
+            this.applyDecorationsFromData(editor, cachedDecorations, true);
+            log('Showing cached decorations (stale) while refreshing...');
         }
 
         // Detect file type and get appropriate strategies
@@ -348,8 +315,7 @@ export class DecorationProvider implements vscode.Disposable {
 
         // Check if a newer update has started while we were scanning
         if (thisVersion !== this.updateVersion) {
-            const logger = getLogger();
-            logger.log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
+            log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
             return;
         }
 
@@ -370,16 +336,15 @@ export class DecorationProvider implements vscode.Disposable {
         // Collect line data using helper method
         const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, thisVersion);
         if (!collectionResult) {
-            getLogger().log('Cancelled stale decoration update (version ' + thisVersion + ')');
+            log('Cancelled stale decoration update (version ' + thisVersion + ')');
             return;
         }
         const { lineData, maxLineLength, maxCol1Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
 
         // Log accurate summary using cumulative set data
-        const logger = getLogger();
         const ignoreFileName = path.basename(document.uri.fsPath);
         const summaryText = 'Summary (' + ignoreFileName + '): ' + workspaceFiles.length + ' files, ' + finalSetSize + ' ignored, ≡' + totalShadowed + ' shadowed, ∅' + totalNotInSet + ' not in set, ✗' + totalBlocked + ' blocked';
-        logger.log(summaryText);
+        log(summaryText);
 
         // Second pass: build decorations using shared helper (useStaleColours = false for fresh data)
         const decorations = this.buildDecorationsFromLineData(document, lineData, maxLineLength, maxCol1Width, maxCol3Width, false);
@@ -388,7 +353,7 @@ export class DecorationProvider implements vscode.Disposable {
 
         // Check again before applying - pattern matching may have taken time
         if (thisVersion !== this.updateVersion) {
-            logger.log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
+            log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
             return;
         }
 
@@ -397,8 +362,7 @@ export class DecorationProvider implements vscode.Disposable {
             lineData: lineData,
             maxLineLength: maxLineLength,
             maxCol1Width: maxCol1Width,
-            maxCol3Width: maxCol3Width,
-            timestamp: Date.now()
+            maxCol3Width: maxCol3Width
         };
         decorationCache.set(documentUri, cachedData);
 
@@ -418,7 +382,7 @@ export class DecorationProvider implements vscode.Disposable {
             editor.setDecorations(this.matchCountDecorationType, matchCountDecorations);
         }
 
-        logger.log('Decoration update complete (fresh data applied)');
+        log('Decoration update complete (fresh data applied)');
     }
 
     private clearDecorations(editor: vscode.TextEditor): void {
@@ -467,7 +431,6 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Collect pattern line data
-        const logger = getLogger();
         const patternStartTime = Date.now();
         let patternCount = 0;
         const patternsPerYield = Math.max(1, Math.floor(10000 / Math.max(1, workspaceFiles.length)));
@@ -548,7 +511,7 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         const patternDuration = Date.now() - patternStartTime;
-        logger.logTiming('Pattern matching: ' + patternCount + ' patterns', patternDuration);
+        logTiming('Pattern matching: ' + patternCount + ' patterns', patternDuration);
 
         // Calculate max column widths for alignment (col2 is last, needs no padding)
         let maxCol1Width = 0;
@@ -583,13 +546,13 @@ export class DecorationProvider implements vscode.Disposable {
     ): Promise<string[] | undefined> {
         const chunkSize = 10000;
         if (files.length <= chunkSize) {
-            return matcher.findMatches(pattern, files).matchingFiles;
+            return matcher.findMatches(pattern, files);
         }
 
         const matchingFiles: string[] = [];
         for (let offset = 0; offset < files.length; offset = offset + chunkSize) {
             const chunk = files.slice(offset, offset + chunkSize);
-            matchingFiles.push(...matcher.findMatches(pattern, chunk).matchingFiles);
+            matchingFiles.push(...matcher.findMatches(pattern, chunk));
 
             await new Promise<void>(resolve => setImmediate(resolve));
             if (thisVersion !== this.updateVersion) {
@@ -753,8 +716,6 @@ export class DecorationProvider implements vscode.Disposable {
      * @param reason - Optional reason for the update (for logging)
      */
     public triggerUpdateDecorations(editor: vscode.TextEditor, throttle: boolean = false, reason?: string): void {
-        const logger = getLogger();
-
         // Cancel matching work as soon as a newer refresh is requested.
         this.updateVersion = this.updateVersion + 1;
 
@@ -770,13 +731,13 @@ export class DecorationProvider implements vscode.Disposable {
 
             this.updateTimeout = setTimeout(() => {
                 if (reason) {
-                    logger.log('Decoration update triggered by: ' + reason);
+                    log('Decoration update triggered by: ' + reason);
                 }
                 void this.updateDecorations(editor);
             }, debounceMs);
         } else {
             if (reason) {
-                logger.log('Decoration update triggered by: ' + reason);
+                log('Decoration update triggered by: ' + reason);
             }
             void this.updateDecorations(editor);
         }

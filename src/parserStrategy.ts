@@ -9,7 +9,11 @@ import { LineType, ParsedLine, IgnoreFileType } from './types';
  */
 export interface ILineParser {
     parseLine(line: string): ParsedLine;
-    parseFile(content: string): ParsedLine[];
+}
+
+export function parseFile(parser: ILineParser, content: string): ParsedLine[] {
+    const processedContent = content.charCodeAt(0) === 0xFEFF ? content.substring(1) : content;
+    return processedContent.split(/\r?\n/).map(line => parser.parseLine(line));
 }
 
 /**
@@ -90,29 +94,6 @@ export class GitignoreParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present (common on Windows-authored files)
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -178,29 +159,6 @@ export class VscodeignoreParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present (common on Windows-authored files)
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -257,142 +215,6 @@ export class GlobNoNegationParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present (common on Windows-authored files)
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
-}
-
-/**
- * Parser for .tfignore files (Team Foundation Version Control).
- * Like GitignoreParser but uses \ as the root anchor instead of /.
- * Converts \pattern to /pattern for compatibility with GitignoreMatcher.
- */
-export class TfignoreParser implements ILineParser {
-    /**
-     * Parses a single line from a tfignore file.
-     * Handles trailing whitespace like gitignore, converts \ anchors to / anchors.
-     *
-     * @param line - The raw line text from the ignore file
-     * @returns ParsedLine with type and pattern information
-     */
-    public parseLine(line: string): ParsedLine {
-        // Handle trailing whitespace like gitignore
-        let processedLine = line;
-
-        // Check for escaped trailing whitespace
-        const trailingEscapeMatch = processedLine.match(/((?:\\[ \t])+)$/);
-        if (trailingEscapeMatch) {
-            const escapedPart = trailingEscapeMatch[1];
-            const preservedWhitespace = escapedPart.replace(/\\/g, '');
-            processedLine = processedLine.slice(0, -escapedPart.length) + preservedWhitespace;
-        } else {
-            // Trim trailing spaces only
-            processedLine = processedLine.replace(/ +$/, '');
-        }
-
-        // Check for blank lines
-        if (processedLine === '') {
-            const result: ParsedLine = {
-                type: 'blank' as LineType,
-                pattern: '',
-                isNegation: false,
-                isDirectory: false,
-                rawText: line
-            };
-            return result;
-        }
-
-        // Check for comments - # at start
-        if (processedLine.startsWith('#')) {
-            const result: ParsedLine = {
-                type: 'comment' as LineType,
-                pattern: '',
-                isNegation: false,
-                isDirectory: false,
-                rawText: line
-            };
-            return result;
-        }
-
-        // Check for negation (lines starting with !)
-        let isNegation = false;
-        let patternStart = 0;
-        if (processedLine.startsWith('!')) {
-            isNegation = true;
-            patternStart = 1;
-        }
-
-        // Get the pattern part (after negation prefix if present)
-        let patternPart = processedLine.substring(patternStart);
-
-        // Convert leading \ to / for root-only anchoring
-        // In tfignore: \*.txt = root only; in gitignore format: /*.txt = root only
-        if (patternPart.startsWith('\\')) {
-            patternPart = '/' + patternPart.substring(1);
-        }
-
-        // Convert any remaining backslashes in paths to forward slashes
-        // This handles patterns like ProjA\*.cpp → ProjA/*.cpp
-        patternPart = patternPart.replace(/\\/g, '/');
-
-        // Reconstruct the full pattern with negation prefix if needed
-        const finalPattern = isNegation ? '!' + patternPart : patternPart;
-
-        const isDirectory = patternPart.endsWith('/');
-
-        const result: ParsedLine = {
-            type: 'pattern' as LineType,
-            pattern: finalPattern,
-            isNegation: isNegation,
-            isDirectory: isDirectory,
-            rawText: line
-        };
-        return result;
-    }
-
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -466,29 +288,6 @@ export class DockerignoreParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -547,29 +346,6 @@ export class CvsignoreParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -657,29 +433,6 @@ export class P4ignoreParser implements ILineParser {
         return result;
     }
 
-    /**
-     * Parses an entire ignore file content.
-     *
-     * @param content - The full content of an ignore file
-     * @returns Array of ParsedLine objects
-     */
-    public parseFile(content: string): ParsedLine[] {
-        // Strip UTF-8 BOM if present
-        let processedContent = content;
-        if (processedContent.charCodeAt(0) === 0xFEFF) {
-            processedContent = processedContent.substring(1);
-        }
-
-        const lines = processedContent.split(/\r?\n/);
-        const parsedLines: ParsedLine[] = [];
-
-        for (const line of lines) {
-            const parsed = this.parseLine(line);
-            parsedLines.push(parsed);
-        }
-
-        return parsedLines;
-    }
 }
 
 /**
@@ -697,7 +450,7 @@ export function getParser(fileType: IgnoreFileType): ILineParser {
         return new GlobNoNegationParser();
     }
     if (fileType === 'tfignore') {
-        return new TfignoreParser();
+        return new P4ignoreParser();
     }
     if (fileType === 'dockerignore') {
         return new DockerignoreParser();

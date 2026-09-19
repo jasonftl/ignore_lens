@@ -41,10 +41,7 @@ suite('DecorationProvider Test Suite', () => {
             findMatches(pattern, chunk) {
                 calls = calls + 1;
                 internals.updateVersion = internals.updateVersion + 1;
-                return { pattern, matchingFiles: chunk, isNegation: false };
-            },
-            testMatch() {
-                return true;
+                return chunk;
             }
         };
 

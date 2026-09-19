@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
-import { getLogger, disposeLogger } from './logger';
+import { log, disposeLogger } from './logger';
 import { decorationCache } from './decorationCache';
 
 // Module-level references to components
@@ -33,8 +33,7 @@ function isSupportedIgnoreFile(document: vscode.TextDocument): boolean {
  * @param context - The extension context
  */
 export function activate(context: vscode.ExtensionContext): void {
-    const logger = getLogger();
-    logger.log('IgnoreLens extension activated');
+    log('IgnoreLens extension activated');
 
     // Initialise the workspace scanner
     workspaceScanner = new WorkspaceScanner();
@@ -86,7 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
             if (created) {
                 refreshActiveEditor('file created', uri);
             }
-        }, error => logger.log('Failed to cache created file: ' + String(error)));
+        }, error => log('Failed to cache created file: ' + String(error)));
     });
     context.subscriptions.push(createDisposable);
 

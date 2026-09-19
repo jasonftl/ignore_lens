@@ -44,30 +44,6 @@ export interface ParsedLine {
 }
 
 /**
- * Represents the result of matching a pattern against workspace files.
- */
-export interface MatchResult {
-    /** The original pattern string */
-    pattern: string;
-    /** Array of file paths that match this pattern */
-    matchingFiles: string[];
-    /** Whether this is a negation pattern */
-    isNegation: boolean;
-}
-
-/**
- * Configuration options for the IgnoreLens extension.
- */
-export interface IgnoreLensConfig {
-    /** Whether the extension is enabled */
-    enabled: boolean;
-    /** The decoration style to use */
-    decorationStyle: DecorationStyle;
-    /** Debounce delay in milliseconds for rescanning */
-    scanDebounceMs: number;
-}
-
-/**
  * Result of calculating counts for a single pattern.
  */
 export interface AdvancedCountResult {

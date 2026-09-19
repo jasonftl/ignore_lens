@@ -22,10 +22,8 @@ logs/
 *.log
 
 # Project-specific
+.plans/
 vsix_archive/
-commit_notes.txt
-ISSUES.md
-REFACTORING*.md
 VERSION
 
 # OS files

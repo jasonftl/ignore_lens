@@ -3,7 +3,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getLogger } from './logger';
+import { logTiming } from './logger';
 
 /**
  * Scanner for workspace files.
@@ -96,7 +96,6 @@ export class WorkspaceScanner implements vscode.Disposable {
         scanKey: string,
         generation: number
     ): Promise<Set<string>> {
-        const logger = getLogger();
         const startTime = Date.now();
 
         // Use VS Code's findFiles API with null exclude to include all files
@@ -125,7 +124,7 @@ export class WorkspaceScanner implements vscode.Disposable {
         }
 
         const duration = Date.now() - startTime;
-        logger.logTiming('Workspace scan: ' + allFiles.size + ' files', duration);
+        logTiming('Workspace scan: ' + allFiles.size + ' files', duration);
         return allFiles;
     }
 

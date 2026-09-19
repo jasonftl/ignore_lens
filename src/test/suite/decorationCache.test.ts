@@ -8,15 +8,14 @@ suite('DecorationCache Test Suite', () => {
             lineData: [],
             maxLineLength: 0,
             maxCol1Width: 0,
-            maxCol3Width: 0,
-            timestamp: Date.now()
+            maxCol3Width: 0
         };
-        const initialSize = decorationCache.size();
+        const initialSize = decorationCache.size;
 
         decorationCache.set(uri, data);
-        assert.strictEqual(decorationCache.size(), initialSize + 1);
+        assert.strictEqual(decorationCache.size, initialSize + 1);
 
         decorationCache.delete(uri);
-        assert.strictEqual(decorationCache.size(), initialSize);
+        assert.strictEqual(decorationCache.size, initialSize);
     });
 });

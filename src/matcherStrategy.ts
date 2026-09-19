@@ -3,8 +3,8 @@
 // Gitignore uses fnmatch with basename matching; vscodeignore uses minimatch without
 
 import ignore, { Ignore } from 'ignore';
-import { minimatch, Minimatch } from 'minimatch';
-import { MatchResult, IgnoreFileType } from './types';
+import { Minimatch } from 'minimatch';
+import { IgnoreFileType } from './types';
 
 const MAX_PATTERN_CACHE_SIZE = 200;
 
@@ -27,8 +27,7 @@ function getCompiledPattern<T>(cache: Map<string, T>, pattern: string, compile: 
  * Interface for pattern matchers.
  */
 export interface IPatternMatcher {
-    findMatches(pattern: string, files: string[]): MatchResult;
-    testMatch(pattern: string, filePath: string): boolean;
+    findMatches(pattern: string, files: string[]): string[];
 }
 
 /**
@@ -139,9 +138,9 @@ export class GitignoreMatcher implements IPatternMatcher {
      *
      * @param pattern - The gitignore pattern to match against
      * @param files - Array of file paths (relative, with forward slashes)
-     * @returns MatchResult containing matched files
+     * @returns Matching file paths
      */
-    public findMatches(pattern: string, files: string[]): MatchResult {
+    public findMatches(pattern: string, files: string[]): string[] {
         // Check for negation (! prefix) but not escaped \! which is a literal !
         const isNegation = pattern.startsWith('!') && !pattern.startsWith('\\!');
         const cleanPattern = isNegation ? pattern.substring(1) : pattern;
@@ -165,63 +164,9 @@ export class GitignoreMatcher implements IPatternMatcher {
             }
         }
 
-        const result: MatchResult = {
-            pattern: pattern,
-            matchingFiles: matchingFiles,
-            isNegation: isNegation
-        };
-        return result;
+        return matchingFiles;
     }
 
-    /**
-     * Tests if a single file matches the pattern.
-     *
-     * @param pattern - The gitignore pattern
-     * @param filePath - The file path to test
-     * @returns true if the file matches the pattern
-     */
-    public testMatch(pattern: string, filePath: string): boolean {
-        // Check for negation (! prefix) but not escaped \! which is a literal !
-        const isNegation = pattern.startsWith('!') && !pattern.startsWith('\\!');
-        let cleanPattern = isNegation ? pattern.substring(1) : pattern;
-
-        // Check if this pattern needs minimatch fallback (character class without wildcards)
-        if (needsMinimatchFallback(pattern)) {
-            // ISSUE-M009 fix: Handle anchored patterns (leading /)
-            const isAnchored = cleanPattern.startsWith('/');
-            if (isAnchored) {
-                cleanPattern = cleanPattern.substring(1);
-                // ISSUE-M012 fix: Check if anchored pattern contains subpath
-                const anchoredHasSubpath = cleanPattern.includes('/');
-                if (anchoredHasSubpath) {
-                    // Pattern has subpath structure, match against full path
-                    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-                    return minimatch(filePath, cleanPattern, { dot: true });
-                } else {
-                    // Pattern has no subpath, only match root-level files
-                    const isRootLevel = !filePath.includes('/');
-                    if (!isRootLevel) {
-                        return false;
-                    }
-                    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-                    return minimatch(filePath, cleanPattern, { dot: true });
-                }
-            }
-
-            // Non-anchored: use minimatch for character class patterns like [a].ts
-            // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-            const matchesBase = minimatch(filePath, cleanPattern, { matchBase: true, dot: true });
-            const matchesFull = minimatch(filePath, cleanPattern, { dot: true });
-            return matchesBase || matchesFull;
-        }
-
-        // Use the ignore package for standard patterns
-        const ig: Ignore = ignore();
-        ig.add(cleanPattern);
-
-        const matches = ig.ignores(filePath);
-        return matches;
-    }
 }
 
 /**
@@ -257,9 +202,9 @@ export class VscodeignoreMatcher implements IPatternMatcher {
      *
      * @param pattern - The vscodeignore pattern to match against
      * @param files - Array of file paths (relative, with forward slashes)
-     * @returns MatchResult containing matched files
+     * @returns Matching file paths
      */
-    public findMatches(pattern: string, files: string[]): MatchResult {
+    public findMatches(pattern: string, files: string[]): string[] {
         // Check for negation (! prefix)
         const isNegation = pattern.startsWith('!');
         let cleanPattern = isNegation ? pattern.substring(1) : pattern;
@@ -286,34 +231,9 @@ export class VscodeignoreMatcher implements IPatternMatcher {
             }
         }
 
-        const result: MatchResult = {
-            pattern: pattern,
-            matchingFiles: matchingFiles,
-            isNegation: isNegation
-        };
-        return result;
+        return matchingFiles;
     }
 
-    /**
-     * Tests if a single file matches the pattern.
-     *
-     * @param pattern - The vscodeignore pattern
-     * @param filePath - The file path to test
-     * @returns true if the file matches the pattern
-     */
-    public testMatch(pattern: string, filePath: string): boolean {
-        // Check for negation (! prefix)
-        const isNegation = pattern.startsWith('!');
-        let cleanPattern = isNegation ? pattern.substring(1) : pattern;
-
-        // Auto-expand folder patterns
-        cleanPattern = this.expandFolderPattern(cleanPattern);
-
-        // NO matchBase option - strict matching
-        // Use { nonegate: true } so literal ! in patterns isn't treated as negation
-        const matches = minimatch(filePath, cleanPattern, { dot: true, nonegate: true });
-        return matches;
-    }
 }
 
 /**
@@ -348,11 +268,9 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
      *
      * @param pattern - The pattern to match against
      * @param files - Array of file paths (relative, with forward slashes)
-     * @returns MatchResult containing matched files
+     * @returns Matching file paths
      */
-    public findMatches(pattern: string, files: string[]): MatchResult {
-        // Never treat ! as negation in these file types
-        const isNegation = false;
+    public findMatches(pattern: string, files: string[]): string[] {
         let cleanPattern = pattern;
 
         // Auto-expand folder patterns: folder/ becomes folder/**
@@ -377,32 +295,9 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
             }
         }
 
-        const result: MatchResult = {
-            pattern: pattern,
-            matchingFiles: matchingFiles,
-            isNegation: isNegation
-        };
-        return result;
+        return matchingFiles;
     }
 
-    /**
-     * Tests if a single file matches the pattern.
-     *
-     * @param pattern - The pattern
-     * @param filePath - The file path to test
-     * @returns true if the file matches the pattern
-     */
-    public testMatch(pattern: string, filePath: string): boolean {
-        let cleanPattern = pattern;
-
-        // Auto-expand folder patterns
-        cleanPattern = this.expandFolderPattern(cleanPattern);
-
-        // Use { nonegate: true } so ! in patterns is treated as literal
-        // Use { nocomment: true } so # in patterns is treated as literal (cvsignore)
-        const matches = minimatch(filePath, cleanPattern, { dot: true, nonegate: true, nocomment: true });
-        return matches;
-    }
 }
 
 /**

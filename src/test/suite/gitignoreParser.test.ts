@@ -2,7 +2,7 @@
 // Unit tests for the GitignoreParser class
 
 import * as assert from 'assert';
-import { GitignoreParser } from '../../parserStrategy';
+import { GitignoreParser, parseFile } from '../../parserStrategy';
 
 suite('GitignoreParser Test Suite', () => {
     let parser: GitignoreParser;
@@ -143,7 +143,7 @@ suite('GitignoreParser Test Suite', () => {
     suite('parseFile', () => {
         test('should parse multiple lines', () => {
             const content = '# Comment\n*.js\n\nnode_modules/';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 4);
             assert.strictEqual(results[0].type, 'comment');
@@ -154,7 +154,7 @@ suite('GitignoreParser Test Suite', () => {
 
         test('should handle Windows line endings', () => {
             const content = '*.js\r\n*.ts';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 2);
             assert.strictEqual(results[0].pattern, '*.js');
@@ -163,7 +163,7 @@ suite('GitignoreParser Test Suite', () => {
 
         test('should handle empty file', () => {
             const content = '';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 1);
             assert.strictEqual(results[0].type, 'blank');
@@ -173,7 +173,7 @@ suite('GitignoreParser Test Suite', () => {
             // Bug fix ISSUE-M008: BOM should be stripped before parsing
             // UTF-8 BOM is \uFEFF (byte order mark)
             const content = '\uFEFF*.log\nnode_modules/';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 2);
             // First pattern should NOT include BOM
@@ -185,7 +185,7 @@ suite('GitignoreParser Test Suite', () => {
         test('should correctly parse comment with BOM prefix', () => {
             // Bug fix ISSUE-M008: BOM before # should still be detected as comment
             const content = '\uFEFF# This is a comment\n*.js';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 2);
             // First line should be a comment (not pattern with BOM prefix)
@@ -197,7 +197,7 @@ suite('GitignoreParser Test Suite', () => {
         test('should handle file without BOM normally', () => {
             // Ensure non-BOM files still work correctly
             const content = '*.log\nnode_modules/';
-            const results = parser.parseFile(content);
+            const results = parseFile(parser, content);
 
             assert.strictEqual(results.length, 2);
             assert.strictEqual(results[0].pattern, '*.log');

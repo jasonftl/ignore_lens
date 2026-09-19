@@ -2,7 +2,7 @@
 // Unit tests for the P4ignoreParser class
 
 import * as assert from 'assert';
-import { P4ignoreParser } from '../../parserStrategy';
+import { P4ignoreParser, parseFile } from '../../parserStrategy';
 import { GitignoreMatcher } from '../../matcherStrategy';
 
 suite('P4ignoreParser Test Suite', () => {
@@ -77,7 +77,7 @@ suite('P4ignoreParser Test Suite', () => {
     suite('parseFile', () => {
         test('should parse multi-line content', () => {
             const content = '# Perforce ignore\n*.dll\n/build.properties\n!important.dll\n';
-            const result = parser.parseFile(content);
+            const result = parseFile(parser, content);
             assert.strictEqual(result.length, 5);  // 4 lines + trailing blank
             assert.strictEqual(result[0].type, 'comment');
             assert.strictEqual(result[1].pattern, '*.dll');
@@ -88,7 +88,7 @@ suite('P4ignoreParser Test Suite', () => {
 
         test('should strip UTF-8 BOM from first line', () => {
             const content = '﻿*.dll';
-            const result = parser.parseFile(content);
+            const result = parseFile(parser, content);
             assert.strictEqual(result[0].pattern, '*.dll');
         });
     });
@@ -103,20 +103,20 @@ suite('P4ignoreParser Test Suite', () => {
         test('rooted pattern /build.properties matches root file only', () => {
             const parsed = parser.parseLine('/build.properties');
             const result = matcher.findMatches(parsed.pattern, files);
-            assert.deepStrictEqual(result.matchingFiles, ['build.properties']);
+            assert.deepStrictEqual(result, ['build.properties']);
         });
 
         test('Windows-rooted pattern \\build.properties matches root file only', () => {
             const parsed = parser.parseLine('\\build.properties');
             const result = matcher.findMatches(parsed.pattern, files);
-            assert.deepStrictEqual(result.matchingFiles, ['build.properties']);
+            assert.deepStrictEqual(result, ['build.properties']);
         });
 
         test('basename pattern *.dll matches at every depth', () => {
             const parsed = parser.parseLine('*.dll');
             const result = matcher.findMatches(parsed.pattern, files);
             assert.deepStrictEqual(
-                result.matchingFiles.sort(),
+                result.sort(),
                 ['a.dll', 'lib/a.dll', 'src/tool/a.dll'].sort()
             );
         });
@@ -126,7 +126,7 @@ suite('P4ignoreParser Test Suite', () => {
             const cppFiles = ['src/build/a.cpp', 'src/build/b.cpp', 'other/a.cpp'];
             const result = matcher.findMatches(parsed.pattern, cppFiles);
             assert.deepStrictEqual(
-                result.matchingFiles.sort(),
+                result.sort(),
                 ['src/build/a.cpp', 'src/build/b.cpp'].sort()
             );
         });
