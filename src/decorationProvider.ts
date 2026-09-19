@@ -484,9 +484,8 @@ export class DecorationProvider implements vscode.Disposable {
             }
 
             // Pre-compute column strings for alignment
-            let col1 = '';
+            let col1: string;
             let col2 = '';
-            let col3 = '';
 
             if (parsedLine.isNegation) {
                 col1 = '−' + String(actionCount);
@@ -504,7 +503,7 @@ export class DecorationProvider implements vscode.Disposable {
                     col2 = '≡' + String(noActionCount);
                 }
             }
-            col3 = '(' + String(setSize) + ')';
+            const col3 = '(' + String(setSize) + ')';
 
             lineData.push({ lineIndex, lineLength, actionCount, noActionCount, blockedCount, setSize, isNegation: parsedLine.isNegation, col1, col2, col3 });
             patternCount = patternCount + 1;

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Native `ignore` language associations for all supported filenames, so the extension activates only when an ignore file opens
 
 ### Changed
+- Updated supported runtime and development dependencies to their latest compatible stable releases
+- Migrated ESLint from legacy configuration to flat configuration
 - Cached workspace file lists are now updated incrementally on file creation and deletion instead of rescanning the workspace for every refresh
 - Compiled ignore patterns are reused across refreshes with a bounded cache
 - Decoration cache entries are released when their document closes

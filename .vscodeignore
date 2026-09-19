@@ -1,0 +1,35 @@
+# Source files (compiled output is in /out)
+src/**
+tsconfig.json
+out/**/*.d.ts
+out/**/*.d.ts.map
+out/**/*.js.map
+
+# Development files
+.plans/**
+.vscode/**
+.vscode-test/**
+eslint.config.mjs
+package-lock.json
+.env*
+*.log
+
+# Local-only project files
+vsix_archive/**
+AGENTS.md
+VERSION
+
+# Git
+.git/**
+.gitignore
+
+# Node development (exclude dev dependencies, keep production ones)
+node_modules/**/
+!node_modules/ignore/
+!node_modules/minimatch/
+!node_modules/@isaacs/
+!node_modules/@isaacs/brace-expansion/
+
+# Test files
+**/*.test.js
+**/test/**
