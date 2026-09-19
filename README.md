@@ -172,6 +172,6 @@ Thanks to:
 
 ## Licence
 
-MIT License - Copyright (c) 2025-26 Jason Gordon
+MIT License - Copyright (c) 2025-2026 Jason Gordon
 
 Free to use, modify, and distribute. See [LICENSE](LICENSE) for details.
