@@ -22,7 +22,7 @@ IgnoreLens decorates each line depending upon how it affects the running count o
 | `−N` | Files removed from running count |
 | `(N)` | Running count total |
 | `≡N` | Already counted (shadowed by earlier line) |
-| `∅N` | Not in count (no matches) |
+| `∅N` | Files matched by a negation but not present in the running count |
 | `✗N` | Blocked by parent directory |
 
 Counts are colour-coded:
@@ -154,11 +154,11 @@ The `stale` colours are shown briefly when switching tabs while cached data refr
 
 ## Technology Stack
 
-- **Language:** TypeScript 5.3.0+
+- **Language:** TypeScript 6.0.3
 - **Framework:** VS Code Extension API (1.85.0+)
 - **Key Libraries:**
-  - `ignore` (5.3.0+) - Gitignore pattern matching
-  - `minimatch` (10.1.1) - Glob pattern matching for vscodeignore
+  - `ignore` (7.0.9) - Gitignore pattern matching
+  - `minimatch` (10.2.6) - Glob pattern matching for vscodeignore
 
 ## Acknowledgements
 

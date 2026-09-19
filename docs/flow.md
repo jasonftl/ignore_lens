@@ -14,18 +14,19 @@ flowchart TD
     end
 
 
-    D -->|1. parses lines| E["getParser().parseLine()"]
-    D -->|2. matches patterns| F["getMatcher().findMatches()"]
-    D -->|3. calculates counts| H["getCountCalculator().calculateCount()"]
+    D -->|1. parses lines| E["parser.parseLine()"]
+    D -->|2. matches patterns| F["findMatchesCooperatively()<br>matcher.findMatches()"]
+    D -->|3. calculates counts| H["countCalculator.calculateCount()"]
     D -->|4. applies| G["editor.setDecorations()"]
 ```
 
 ## Components
 
-- **extension.ts** - Entry point, registers event handlers
-- **WorkspaceScanner** - Scans workspace for files
-- **DecorationProvider** - Manages line decorations and match counts
-- **decorationCache.ts** - Caches decoration data for instant display on tab switch
-- **parserStrategy.ts** - Strategy pattern for parsing (GitignoreParser, VscodeignoreParser; prettierignore uses GitignoreParser)
-- **matcherStrategy.ts** - Strategy pattern for matching (GitignoreMatcher, VscodeignoreMatcher; prettierignore uses GitignoreMatcher)
-- **countStrategy.ts** - Strategy pattern for count calculation (GitignoreCountCalculator, VscodeignoreCountCalculator; prettierignore uses GitignoreCountCalculator)
+- **extension.ts** - Entry point and event coordination
+- **WorkspaceScanner** - Scans and caches workspace file paths
+- **DecorationProvider** - Coordinates parsing, matching, counting, caching, and decorations
+- **decorationCache.ts** - Caches decoration data for immediate display when switching tabs
+- **supportedFiles.ts** - Maps supported filenames to their matching semantics
+- **parserStrategy.ts** - Parses ignore lines according to the file format
+- **matcherStrategy.ts** - Matches patterns against workspace file paths
+- **countStrategy.ts** - Calculates each pattern's effect on the running ignored-file count
