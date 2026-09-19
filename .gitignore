@@ -11,6 +11,7 @@ dist/
 .scripts/
 .vscode/*
 !.vscode/settings.json
+.vscodeignore
 
 # Environment
 .env
