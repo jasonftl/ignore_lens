@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Update runtime and development dependencies.
+
 ### Fixed
 - Check symlinks when link following is enabled, and warn when targets are skipped.
 - Cancel scans when leaving ignore files, changing workspace folders, or disabling Ignore Lens.
