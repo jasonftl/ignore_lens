@@ -1,3 +1,4 @@
+import ignore from 'ignore';
 import { createGitignoreRules, IgnoreRules } from './gitignoreRules';
 import { matchesPathOrParent, NpmignoreRule } from './matcherStrategy';
 import { AdvancedCountResult, IgnoreFileType } from './types';
@@ -7,11 +8,7 @@ export interface ICountCalculator {
 }
 
 export class GitignoreCountCalculator implements ICountCalculator {
-    private readonly rules: IgnoreRules;
-
-    constructor(ignoreCase = false) {
-        this.rules = createGitignoreRules(ignoreCase);
-    }
+    constructor(private readonly rules: IgnoreRules = createGitignoreRules()) {}
 
     public calculateCount(files: string[], isNegation: boolean, ignored: Set<string>, pattern: string): AdvancedCountResult {
         this.rules.add(pattern);
@@ -118,7 +115,8 @@ export class VscodeignoreCountCalculator extends SequentialCountCalculator {
 export function getCountCalculator(fileType: IgnoreFileType, ignoreCase = false): ICountCalculator {
     switch (fileType) {
         case 'vscodeignore': return new VscodeignoreCountCalculator();
-        case 'gitignore': return new GitignoreCountCalculator(ignoreCase);
+        case 'gitignore': return new GitignoreCountCalculator(createGitignoreRules(ignoreCase));
+        case 'gcloudignore': return new GitignoreCountCalculator(ignore({ ignoreCase: false }));
         case 'npmignore': return new NpmignoreCountCalculator();
         default: return new SequentialCountCalculator();
     }

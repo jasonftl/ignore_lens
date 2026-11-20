@@ -49,6 +49,58 @@ suite('DecorationProvider Test Suite', () => {
         }
     });
 
+    test('applies Google Cloud includes in order and refreshes when a sibling changes', async function () {
+        this.timeout(10000);
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const directory = vscode.Uri.joinPath(folder.uri, 'gcloud-includes');
+        const uri = vscode.Uri.joinPath(directory, '.gcloudignore');
+        const write = (name: string, content: string) =>
+            vscode.workspace.fs.writeFile(vscode.Uri.joinPath(directory, name), Buffer.from(content));
+        await vscode.workspace.fs.createDirectory(directory);
+        await Promise.all([
+            write('.gcloudignore', [
+                '!keep.log', '#!include:.gitignore', '!keep.log', '#!include:extra.rules',
+                '#!include:../outside.rules', '#!include:missing.rules', '!notes.txt', 'log-dir/', '#!include:exceptions.rules'
+            ].join('\n')),
+            write('.gitignore', '*.log\n'),
+            write('extra.rules', '!a.log\nnotes.txt\n#!include:nested.rules\n'),
+            write('nested.rules', 'nested.rules\n'),
+            write('exceptions.rules', '!log-dir/keep.txt\n'),
+            ...['a.log', 'keep.log', 'notes.txt'].map(name => write(name, ''))
+        ]);
+        await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(directory, 'log-dir'));
+        await write('log-dir/keep.txt', '');
+
+        await vscode.extensions.getExtension('ignore-lens.ignore-lens')!.activate();
+        await vscode.window.showTextDocument(uri, { preview: true });
+        const cacheKey = uri.toString();
+        const rows = () => decorationCache.get(cacheKey)?.lineData.map(row => [row.lineIndex, row.col1, row.setSize]);
+        const waitForCount = async (count: string) => {
+            for (let attempt = 0; attempt < 120; attempt++) {
+                if (rows()?.[1]?.[1] === count) return;
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            assert.fail('Expected include count ' + count + ', got ' + JSON.stringify(rows()));
+        };
+        try {
+            await waitForCount('+2');
+            assert.deepStrictEqual(rows(), [
+                [0, '−0', 0], [1, '+2', 2], [2, '−1', 1], [3, '+1 −1', 1], [6, '−1', 0], [7, '+1', 1], [8, '+0', 1]
+            ]);
+            assert.deepStrictEqual(decorationCache.get(cacheKey)?.warnings.map(warning => warning.lineIndex), [3, 4, 5]);
+
+            await write('.gitignore', 'a.log\n');
+            await waitForCount('+1');
+            assert.deepStrictEqual(rows(), [
+                [0, '−0', 0], [1, '+1', 1], [2, '−0', 1], [3, '+1 −1', 1], [6, '−1', 0], [7, '+1', 1], [8, '+0', 1]
+            ]);
+        } finally {
+            await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            decorationCache.delete(cacheKey);
+        }
+    });
+
     test('refreshes the file scan on tab return and shows a loop warning', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);

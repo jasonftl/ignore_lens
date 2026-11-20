@@ -6,6 +6,7 @@ import ignore from 'ignore';
 import { Minimatch } from 'minimatch';
 import { posix, sep } from 'node:path';
 import { createGitignoreRules, IgnoreRules } from './gitignoreRules';
+import { compileHelmPattern } from './helmPattern';
 import { IgnoreFileType } from './types';
 
 const MAX_PATTERN_CACHE_SIZE = 200;
@@ -155,6 +156,27 @@ export function matchesPathOrParent(file: string, matches: (candidate: string) =
     return false;
 }
 
+class HelmignoreMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, (file: string) => boolean>();
+
+    public findMatches(pattern: string, files: string[]): string[] {
+        const excludes = getCompiledPattern(this.patternCache, pattern, () => {
+            const inverted = pattern.startsWith('!');
+            const positive = inverted ? pattern.slice(1) : pattern;
+            const directoryOnly = positive.endsWith('/');
+            const body = positive.replace(/\/$/, '').replace(/^\//, '');
+            const matchPath = positive.startsWith('/') || body.includes('/');
+            const matches = compileHelmPattern(body);
+            return file => matchesPathOrParent(file, candidate => {
+                const name = matchPath ? candidate : posix.basename(candidate);
+                const matched = (!directoryOnly || candidate !== file) && matches?.(name) === true;
+                return matched !== inverted;
+            });
+        });
+        return files.filter(excludes);
+    }
+}
+
 class P4ignoreMatcher extends GitignoreMatcher {
     private readonly recursivePatterns = new Map<string, { tokens: string[]; anchored: boolean; directory: boolean }>();
 
@@ -265,6 +287,7 @@ export function getMatcher(fileType: IgnoreFileType, ignoreCase = false): IPatte
         case 'cvsignore': return new GlobNoNegationMatcher();
         case 'vscodeignore': return new VscodeignoreMatcher();
         case 'dockerignore': return new DockerignoreMatcher();
+        case 'helmignore': return new HelmignoreMatcher();
         case 'p4ignore': return new P4ignoreMatcher(ignore);
         case 'npmignore': return new NpmignoreMatcher();
         case 'bazelignore': return new BazelignoreMatcher();

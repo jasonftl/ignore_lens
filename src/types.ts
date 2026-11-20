@@ -20,7 +20,7 @@ export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'glob-no-negation' |
 /**
  * The type of line in an ignore file.
  */
-export type LineType = 'pattern' | 'comment' | 'blank';
+export type LineType = 'pattern' | 'include' | 'comment' | 'blank';
 
 /**
  * The decoration style for highlighting patterns.
@@ -33,9 +33,9 @@ export type DecorationStyle = 'none' | 'background' | 'text' | 'both';
 export interface ParsedLine {
     /** The type of this line */
     type: LineType;
-    /** The pattern string (empty for comments and blank lines) */
+    /** The pattern or include filename (empty for comments and blank lines) */
     pattern: string;
-    /** Whether this is a negation pattern (starts with !) */
+    /** Whether this pattern can restore excluded files */
     isNegation: boolean;
     /** Whether this specifically targets a directory (ends with /) */
     isDirectory: boolean;

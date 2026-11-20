@@ -7,6 +7,7 @@ import { DecorationProvider } from './decorationProvider';
 import { WorkspaceScanner } from './workspaceScanner';
 import { log, disposeLogger } from './logger';
 import { decorationCache } from './decorationCache';
+import { getGcloudIncludeName, isGcloudIncludeName } from './parserStrategy';
 
 // Module-level references to components
 let decorationProvider: DecorationProvider | undefined;
@@ -73,6 +74,8 @@ export function activate(context: vscode.ExtensionContext): void {
         void workspaceScanner.addPath(uri).then(created => {
             if (created) {
                 refreshVisibleEditors('file created', uri, created === 'rescan');
+            } else {
+                refreshGcloudIncludes(uri);
             }
         }, error => log('Failed to cache created file: ' + String(error)));
     });
@@ -81,9 +84,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const deleteDisposable = fileWatcher.onDidDelete(uri => {
         if (workspaceScanner?.removePath(uri)) {
             refreshVisibleEditors('file deleted', uri);
+        } else {
+            refreshGcloudIncludes(uri);
         }
     });
     context.subscriptions.push(deleteDisposable);
+    context.subscriptions.push(fileWatcher.onDidChange(refreshGcloudIncludes));
 
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
         refreshVisibleEditors('workspace folders changed');
@@ -99,6 +105,25 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
 
     refreshVisibleEditors('activation');
+}
+
+function refreshGcloudIncludes(uri: vscode.Uri): void {
+    for (const editor of vscode.window.visibleTextEditors) {
+        const documentUri = editor.document.uri;
+        if (documentUri.scheme !== uri.scheme || documentUri.authority !== uri.authority ||
+            path.basename(documentUri.fsPath).toLowerCase() !== '.gcloudignore') continue;
+
+        const directory = path.dirname(documentUri.fsPath);
+        if (path.relative(directory, path.dirname(uri.fsPath)) !== '') continue;
+
+        for (let line = 0; line < editor.document.lineCount; line++) {
+            const name = getGcloudIncludeName(editor.document.lineAt(line).text);
+            if (name !== undefined && isGcloudIncludeName(name) && path.relative(path.join(directory, name), uri.fsPath) === '') {
+                decorationProvider?.triggerUpdateDecorations(editor, true, 'Google Cloud include changed');
+                break;
+            }
+        }
+    }
 }
 
 function refreshVisibleEditors(reason: string, changedUri?: vscode.Uri, wholeFolder = false, document?: vscode.TextDocument): void {

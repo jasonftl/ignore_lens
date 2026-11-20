@@ -3,6 +3,7 @@
 // Gitignore and vscodeignore have different whitespace handling rules
 
 import { posix } from 'node:path';
+import { compileHelmPattern } from './helmPattern';
 import { LineType, ParsedLine, IgnoreFileType } from './types';
 
 /**
@@ -403,33 +404,12 @@ export class P4ignoreParser implements ILineParser {
 
 }
 
-function isValidHelmPattern(pattern: string): boolean {
-    const characters = Array.from(pattern);
-    const escapes = process.platform !== 'win32';
-    let index = 0;
-    const readClassMember = () => {
-        const char = characters[index++];
-        if (char === undefined || char === '-' || char === ']') return false;
-        return !escapes || char !== '\\' || index++ < characters.length;
-    };
+export function getGcloudIncludeName(line: string): string | undefined {
+    return /^#\s*!include:(.*)$/.exec(line)?.[1];
+}
 
-    while (index < characters.length) {
-        const char = characters[index++];
-        if (escapes && char === '\\') {
-            if (index++ === characters.length) return false;
-        } else if (char === '[') {
-            if (characters[index] === '^') index++;
-            do {
-                if (!readClassMember()) return false;
-                if (characters[index] === '-') {
-                    index++;
-                    if (!readClassMember()) return false;
-                }
-            } while (characters[index] !== ']');
-            index++;
-        }
-    }
-    return true;
+export function isGcloudIncludeName(name: string): boolean {
+    return name !== '' && name !== '.' && name !== '..' && !/[/\\:\0]/.test(name);
 }
 
 export function getParser(fileType: IgnoreFileType): ILineParser {
@@ -453,11 +433,23 @@ export function getParser(fileType: IgnoreFileType): ILineParser {
                     if (rule.type === 'pattern') {
                         if (rule.pattern.includes('**')) {
                             rule.warning = 'Helm does not support the ** wildcard.';
-                        } else if (!isValidHelmPattern(rule.pattern)) {
+                        } else if (!compileHelmPattern(rule.pattern)) {
                             rule.warning = 'Invalid Helm ignore pattern.';
                         }
+                        // A Helm ! rule excludes non-matches and never restores files.
+                        rule.isNegation = false;
                     }
                     return rule;
+                }
+            };
+        }
+        case 'gcloudignore': {
+            const parser = new GitignoreParser();
+            return {
+                parseLine(line) {
+                    const name = getGcloudIncludeName(line);
+                    if (name === undefined) return parser.parseLine(line);
+                    return { type: 'include', pattern: name, isNegation: false, isDirectory: false, rawText: line };
                 }
             };
         }

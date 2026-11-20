@@ -15,6 +15,14 @@ suite('Ignore format regression examples', () => {
             expected: ['LOGS/debug.log', 'sub/Logs/debug.log'] },
         { name: '.gcloudignore', rule: 'foo', files: ['src/foo', 'src/bar'], expected: ['src/foo'] },
         { name: '.gcloudignore', rule: '/bar', files: ['bar', 'src/bar'], expected: ['bar'] },
+        { name: '.helmignore', rule: '!keep.tmp', files: ['keep.tmp', 'sub/keep.tmp', 'notes.txt'],
+            expected: ['sub/keep.tmp', 'notes.txt'] },
+        { name: '.helmignore', rule: '!keep/', files: ['keep/file.txt', 'other/file.txt'],
+            expected: ['keep/file.txt', 'other/file.txt'] },
+        { name: '.helmignore', rule: '/dir/[!a].txt', files: ['dir/!.txt', 'dir/a.txt', 'dir/b.txt', 'sub/dir/!.txt'],
+            expected: ['dir/!.txt', 'dir/a.txt'] },
+        { name: '.helmignore', rule: 'data/*??', files: ['data/a', 'data/ab', 'data/\u20ac'],
+            expected: ['data/ab', 'data/\u20ac'] },
         ...['foo/bar', 'foo/bar/'].map(rule => ({ name: '.dockerignore', rule,
             files: ['foo/bar', 'foo/bar/index.ts', 'app/foo/bar'], expected: ['foo/bar', 'foo/bar/index.ts'] })),
         { name: '.bazelignore', rule: 'build', files: ['build/a', 'app/build/b', 'builder/c'], expected: ['build/a'] },
@@ -72,5 +80,21 @@ suite('Ignore format regression examples', () => {
         }
         assert.strictEqual(parser.parseLine('file\\').warning,
             process.platform === 'win32' ? undefined : 'Invalid Helm ignore pattern.');
+    });
+
+    test('Helm exception rules never restore earlier exclusions', () => {
+        const files = ['a.tmp', 'keep.tmp', 'notes.txt', 'Chart.yaml'];
+        const matcher = getMatcher('helmignore');
+        for (const [text, added] of [
+            ['*.tmp\n![Ck]*', [2, 1]],
+            ['![Ck]*\n*.tmp', [2, 1]],
+        ] as const) {
+            const calculator = getCountCalculator('helmignore');
+            const ignored = new Set<string>();
+            const results = parseFile(getParser('helmignore'), text).map(rule =>
+                calculator.calculateCount(matcher.findMatches(rule.pattern, files), rule.isNegation, ignored, rule.pattern));
+            assert.deepStrictEqual(results.map(result => result.actionCount), added);
+            assert.deepStrictEqual([...ignored].sort(), ['a.tmp', 'keep.tmp', 'notes.txt']);
+        }
     });
 });

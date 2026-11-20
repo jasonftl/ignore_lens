@@ -5,9 +5,9 @@ import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import * as path from 'path';
 import { ScanWarning, WorkspaceScanner } from './workspaceScanner';
-import { AdvancedCountResult, DecorationStyle, IgnoreFileType } from './types';
+import { AdvancedCountResult, DecorationStyle, IgnoreFileType, ParsedLine } from './types';
 import { log, logTiming } from './logger';
-import { getParser, ILineParser } from './parserStrategy';
+import { getParser, ILineParser, isGcloudIncludeName, parseFile } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
 import { getCountCalculator, ICountCalculator } from './countStrategy';
 import { decorationCache, CachedDecorations, LineDecorationData, LineWarning } from './decorationCache';
@@ -504,28 +504,51 @@ export class DecorationProvider implements vscode.Disposable {
                 }
             }
 
-            const reset = parsedLine.tokens?.lastIndexOf('!') ?? -1;
-            const patterns = parsedLine.tokens?.slice(reset + 1) ?? [parsedLine.pattern];
-            const matches = await this.findLineMatches(matcher, patterns, workspaceFiles, isCurrent);
-            if (!matches) return undefined;
-
             let isNegation = parsedLine.isNegation;
             let removed = 0;
             let countResult: AdvancedCountResult;
-            if (reset !== -1) {
-                const next = new Set(matches);
-                for (const file of cumulativeSet) {
-                    if (!next.has(file)) removed++;
+            const reset = parsedLine.tokens?.lastIndexOf('!') ?? -1;
+            const patterns = parsedLine.tokens?.slice(reset + 1) ?? [parsedLine.pattern];
+            if (parsedLine.type === 'include' || reset !== -1) {
+                const previous = new Set(cumulativeSet);
+                if (parsedLine.type === 'include') {
+                    const included = await this.readGcloudInclude(document.uri, parsedLine.pattern, parser);
+                    if (!isCurrent()) return undefined;
+                    if (typeof included === 'string') {
+                        warnings.push({ lineIndex, message: included });
+                        continue;
+                    }
+                    if (included.some(rule => rule.type === 'include')) {
+                        warnings.push({ lineIndex, message: 'Google Cloud does not process nested include directives.' });
+                    }
+                    for (const rule of included) {
+                        if (rule.type !== 'pattern') continue;
+                        if (++patternCount % patternsPerYield === 0) {
+                            await new Promise<void>(resolve => setImmediate(resolve));
+                            if (!isCurrent()) return undefined;
+                        }
+                        const matches = await this.findMatchesCooperatively(matcher, rule.pattern, workspaceFiles, isCurrent);
+                        if (!matches) return undefined;
+                        countCalculator.calculateCount(matches, rule.isNegation, cumulativeSet, rule.pattern);
+                    }
+                } else {
+                    const matches = await this.findLineMatches(matcher, patterns, workspaceFiles, isCurrent);
+                    if (!matches) return undefined;
+                    cumulativeSet.clear();
+                    for (const file of matches) cumulativeSet.add(file);
                 }
                 let added = 0;
-                for (const file of next) {
-                    if (!cumulativeSet.has(file)) added++;
+                for (const file of previous) {
+                    if (!cumulativeSet.has(file)) removed++;
                 }
-                cumulativeSet.clear();
-                for (const file of next) cumulativeSet.add(file);
-                isNegation = added === 0;
-                countResult = { actionCount: isNegation ? removed : added, noActionCount: 0, blockedCount: 0, setSize: next.size };
+                for (const file of cumulativeSet) {
+                    if (!previous.has(file)) added++;
+                }
+                isNegation = added === 0 && (removed > 0 || parsedLine.type !== 'include');
+                countResult = { actionCount: isNegation ? removed : added, noActionCount: 0, blockedCount: 0, setSize: cumulativeSet.size };
             } else {
+                const matches = await this.findLineMatches(matcher, patterns, workspaceFiles, isCurrent);
+                if (!matches) return undefined;
                 countResult = countCalculator.calculateCount(matches, isNegation, cumulativeSet, parsedLine.pattern);
             }
             const { actionCount, noActionCount, blockedCount, setSize } = countResult;
@@ -592,6 +615,20 @@ export class DecorationProvider implements vscode.Disposable {
             totalBlocked,
             finalSetSize: cumulativeSet.size
         };
+    }
+
+    private async readGcloudInclude(documentUri: vscode.Uri, name: string, parser: ILineParser): Promise<ParsedLine[] | string> {
+        if (!isGcloudIncludeName(name)) return 'Google Cloud can only include a file in the same directory.';
+
+        const uri = vscode.Uri.joinPath(documentUri, '..', name);
+        try {
+            const stat = await vscode.workspace.fs.stat(uri);
+            if (stat.type !== vscode.FileType.File) return 'Google Cloud include must name a regular file: ' + name;
+            const content = await vscode.workspace.fs.readFile(uri);
+            return parseFile(parser, Buffer.from(content).toString('utf8'));
+        } catch {
+            return 'Could not read Google Cloud include file: ' + name;
+        }
     }
 
     private async findLineMatches(
