@@ -2,7 +2,7 @@
 // Strategy pattern for pattern matching in different ignore file types
 // Gitignore uses fnmatch with basename matching; vscodeignore uses minimatch without
 
-import ignore, { Ignore } from 'ignore';
+import ignore from 'ignore';
 import { Minimatch } from 'minimatch';
 import { IgnoreFileType } from './types';
 
@@ -131,8 +131,6 @@ function matchWithMinimatchBasename(pattern: string, files: string[]): string[] 
  * Falls back to minimatch for character class patterns without wildcards.
  */
 export class GitignoreMatcher implements IPatternMatcher {
-    private readonly patternCache = new Map<string, Ignore>();
-
     /**
      * Finds all files that match the given gitignore pattern.
      *
@@ -152,8 +150,8 @@ export class GitignoreMatcher implements IPatternMatcher {
             // Use minimatch for character class patterns like [a].ts
             matchingFiles = matchWithMinimatchBasename(cleanPattern, files);
         } else {
-            // Use the ignore package for standard patterns
-            const ig = getCompiledPattern(this.patternCache, cleanPattern, () => ignore().add(cleanPattern));
+            // The ignore package caches results for every path it tests.
+            const ig = ignore().add(cleanPattern);
 
             for (const file of files) {
                 // The ignores() method returns true if the file matches the pattern

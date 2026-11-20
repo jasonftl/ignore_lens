@@ -17,12 +17,18 @@ export interface LineDecorationData {
     col3: string;  // "(N)"
 }
 
+export interface LineWarning {
+    lineIndex: number;
+    message: string;
+}
+
 /**
  * Cached decoration data for a document.
  * col2 does not need alignment (it is the last column rendered) so its width is not tracked.
  */
 export interface CachedDecorations {
     lineData: LineDecorationData[];
+    warnings: LineWarning[];
     maxLineLength: number;
     maxCol1Width: number;
     maxCol3Width: number;

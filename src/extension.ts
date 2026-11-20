@@ -44,7 +44,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register for active editor changes
     const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor && isSupportedIgnoreFile(editor.document) && decorationProvider) {
-            decorationProvider.triggerUpdateDecorations(editor, false, 'editor switch');
+            decorationProvider.triggerUpdateDecorations(editor, false, 'editor switch', true);
+        } else {
+            decorationProvider?.cancelUpdate();
         }
     });
     context.subscriptions.push(editorChangeDisposable);
@@ -109,6 +111,10 @@ export function activate(context: vscode.ExtensionContext): void {
             }
             refreshActiveEditor('config change');
         }
+        if (event.affectsConfiguration('search.followSymlinks')) {
+            decorationProvider?.cancelUpdate();
+            refreshActiveEditor('symlink setting changed', undefined, true);
+        }
     });
     context.subscriptions.push(configDisposable);
 
@@ -124,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
  * @param reason - Optional reason for the refresh (for logging)
  * @param changedUri - Optional changed path used to filter irrelevant workspace events
  */
-function refreshActiveEditor(reason?: string, changedUri?: vscode.Uri): void {
+function refreshActiveEditor(reason?: string, changedUri?: vscode.Uri, fresh = false): void {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !isSupportedIgnoreFile(editor.document) || !decorationProvider) {
         return;
@@ -143,7 +149,7 @@ function refreshActiveEditor(reason?: string, changedUri?: vscode.Uri): void {
         }
     }
 
-    decorationProvider.triggerUpdateDecorations(editor, true, reason);
+    decorationProvider.triggerUpdateDecorations(editor, true, reason, fresh);
 }
 
 function isPathWithin(parent: string, candidate: string): boolean {

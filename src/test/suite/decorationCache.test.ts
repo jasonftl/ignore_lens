@@ -6,6 +6,7 @@ suite('DecorationCache Test Suite', () => {
         const uri = 'test://decoration-cache/' + Date.now();
         const data: CachedDecorations = {
             lineData: [],
+            warnings: [],
             maxLineLength: 0,
             maxCol1Width: 0,
             maxCol3Width: 0

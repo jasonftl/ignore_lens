@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Check symlinks when link following is enabled, and warn when targets are skipped.
+- Cancel scans when leaving ignore files, changing workspace folders, or disabling Ignore Lens.
+- Start a fresh scan when returning to an ignore-file tab, with previous counts visible while the scan runs.
+- Release cached gitignore match results after each batch of files.
+
 ## [1.1.1] - 19/09/2026
 
 ### Changed

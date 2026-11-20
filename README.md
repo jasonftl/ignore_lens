@@ -152,6 +152,8 @@ The `stale` colours are shown briefly when switching tabs while cached data refr
 
 - **Hidden files are included in counts.** Files with the hidden attribute (Windows), hidden flag (macOS), or starting with `.` (Linux/Unix) are counted like regular files.
 
+- **Symlinks.** If IgnoreLens detects a symlink loop in the workspace, it skips all symlink targets because a weakness in vscode.workspace.findFiles() can crash VS Code.
+
 ## Technology Stack
 
 - **Language:** TypeScript 6.0.3
