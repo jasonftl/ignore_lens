@@ -258,9 +258,7 @@ export class WorkspaceScanner implements vscode.Disposable {
     /** Removes a deleted file or directory from its workspace cache. */
     public removePath(uri: vscode.Uri): boolean {
         const key = uri.toString();
-        for (const pending of this.pendingCreates.keys()) {
-            if (pending === key || pending.startsWith(key + '/')) this.pendingCreates.delete(pending);
-        }
+        this.pendingCreates.delete(key);
         const folder = vscode.workspace.getWorkspaceFolder(uri);
         if (!folder) {
             return false;
@@ -270,6 +268,13 @@ export class WorkspaceScanner implements vscode.Disposable {
             return false;
         }
 
+        const cached = this.fileCache.get(folder.uri.toString());
+        if (!cached?.files.has(this.relativePath(folder, uri))) {
+            const prefix = key + '/';
+            for (const pending of this.pendingCreates.keys()) {
+                if (pending.startsWith(prefix)) this.pendingCreates.delete(pending);
+            }
+        }
         this.recordChange(folder, uri, false);
         return true;
     }

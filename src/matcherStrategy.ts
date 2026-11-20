@@ -4,6 +4,8 @@
 
 import ignore from 'ignore';
 import { Minimatch } from 'minimatch';
+import { posix, sep } from 'node:path';
+import { createGitignoreRules, IgnoreRules } from './gitignoreRules';
 import { IgnoreFileType } from './types';
 
 const MAX_PATTERN_CACHE_SIZE = 200;
@@ -32,11 +34,12 @@ export interface IPatternMatcher {
 
 /** Git uses the same rules to match files and their parent directories. */
 export class GitignoreMatcher implements IPatternMatcher {
-    constructor(private readonly ignoreCase = false) {}
+    constructor(private readonly createRules: () => IgnoreRules = createGitignoreRules) {}
 
     public findMatches(pattern: string, files: string[]): string[] {
         const positive = pattern.startsWith('!') ? pattern.slice(1).replace(/^[!#]/, '\\$&') : pattern;
-        const rules = ignore({ ignoreCase: this.ignoreCase }).add(positive);
+        const rules = this.createRules();
+        rules.add(positive);
         return files.filter(file => rules.ignores(file));
     }
 }
@@ -141,7 +144,7 @@ class DockerignoreMatcher implements IPatternMatcher {
     }
 }
 
-function matchesPathOrParent(file: string, matches: (candidate: string) => boolean): boolean {
+export function matchesPathOrParent(file: string, matches: (candidate: string) => boolean): boolean {
     let candidate = file;
     while (candidate) {
         if (matches(candidate)) return true;
@@ -212,8 +215,47 @@ class P4ignoreMatcher extends GitignoreMatcher {
 
 class BazelignoreMatcher implements IPatternMatcher {
     public findMatches(pattern: string, files: string[]): string[] {
-        const prefix = pattern.replace(/\/+$/, '') + '/';
+        const directory = posix.normalize(pattern.split(sep).join('/')).replace(/\/$/, '');
+        if (directory === '.') return files.slice();
+        const prefix = directory + '/';
         return files.filter(file => file.startsWith(prefix));
+    }
+}
+
+export class NpmignoreRule {
+    private readonly matcher: Minimatch;
+    private readonly matchDirectoryBasename: boolean;
+    public readonly isNegation: boolean;
+
+    constructor(pattern: string) {
+        this.matcher = new Minimatch(pattern, { dot: true, matchBase: true, nocase: true, flipNegate: true });
+        this.isNegation = this.matcher.negate;
+        this.matchDirectoryBasename = this.matcher.globParts.some(parts => parts.length <= (parts[parts.length - 1] ? 1 : 2));
+    }
+
+    public matchesPath(path: string, partial = false): boolean {
+        return this.matcher.match(path, partial) || this.matcher.match('/' + path, partial);
+    }
+
+    public matchesDirectory(directory: string, includePartial = true): boolean {
+        const partial = includePartial && this.isNegation;
+        if (this.matchesPath(directory) || this.matchesDirectoryEntry(directory, partial)) return true;
+        const slash = directory.lastIndexOf('/');
+        return this.matchDirectoryBasename && slash !== -1 && this.matchesDirectoryEntry(directory.slice(slash + 1), partial);
+    }
+
+    private matchesDirectoryEntry(path: string, partial: boolean): boolean {
+        return this.matchesPath(path + '/') || (partial && this.matchesPath(path, true));
+    }
+}
+
+class NpmignoreMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, NpmignoreRule>();
+
+    public findMatches(pattern: string, files: string[]): string[] {
+        const rule = getCompiledPattern(this.patternCache, pattern, () => new NpmignoreRule(pattern));
+        return files.filter(file => matchesPathOrParent(file, candidate =>
+            candidate === file ? rule.matchesPath(candidate) : rule.matchesDirectory(candidate)));
     }
 }
 
@@ -223,9 +265,11 @@ export function getMatcher(fileType: IgnoreFileType, ignoreCase = false): IPatte
         case 'cvsignore': return new GlobNoNegationMatcher();
         case 'vscodeignore': return new VscodeignoreMatcher();
         case 'dockerignore': return new DockerignoreMatcher();
-        case 'p4ignore': return new P4ignoreMatcher(true);
+        case 'p4ignore': return new P4ignoreMatcher(ignore);
+        case 'npmignore': return new NpmignoreMatcher();
         case 'bazelignore': return new BazelignoreMatcher();
-        case 'tfignore': return new GitignoreMatcher(true);
-        default: return new GitignoreMatcher(ignoreCase);
+        case 'tfignore': return new GitignoreMatcher(ignore);
+        case 'gitignore': return new GitignoreMatcher(() => createGitignoreRules(ignoreCase));
+        default: return new GitignoreMatcher(() => ignore({ ignoreCase: false }));
     }
 }

@@ -15,11 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancel scans when leaving ignore files, changing workspace folders, or disabling Ignore Lens.
 - Start a fresh scan when returning to an ignore-file tab, with previous counts visible while the scan runs.
 - Release cached gitignore match results after each batch of files.
-- Apply Git's parent-directory and case rules when counting exceptions, and preserve escaped trailing spaces and character classes.
-- Apply the matching rules for Perforce, VS Code packaging, npm, Google Cloud, Docker, Bazel, Helm, and CVS examples.
-- Refresh visible ignore editors after file and setting changes, preserve newer file events, and keep cached warnings in sync.
-- Bound symlink pre-scans, avoid walking the cache for individual file deletions, and show scan errors and stale counts with the correct output and theme settings.
-- Keep release packaging rules with the source, and isolate each extension test run.
+- Apply Git's parent-directory rules, match its bracket case-folding behaviour, and preserve escaped trailing spaces (ISSUE-H004, ISSUE-M026, ISSUE-M027, ISSUE-M028, ISSUE-M029).
+- Apply the matching rules for Perforce, VS Code packaging, Docker, and CVS (ISSUE-M035, ISSUE-M036, ISSUE-M037, ISSUE-M039, ISSUE-M042).
+- Match npm and Google Cloud basenames and root anchors. Apply npm's case, directory traversal, and repeated negation rules (ISSUE-M038).
+- Preserve spaces when normalising Bazel's literal directory paths, and warn about invalid Helm ignore patterns (ISSUE-M040, ISSUE-M041).
+- Refresh visible ignore editors after file and setting changes, preserve newer file events, and keep cached warnings in sync (ISSUE-M030, ISSUE-M031, ISSUE-M032, ISSUE-M034, ISSUE-L026).
+- Bound symlink pre-scans, avoid walking cached paths and pending creates for known-file deletions, and show scan errors and stale counts with the correct output and theme settings (ISSUE-M033, ISSUE-M043, ISSUE-L025, ISSUE-L027).
+- Keep release packaging rules with the source, and isolate each extension test run (ISSUE-L028, ISSUE-L029).
 
 ## [1.1.1] - 19/09/2026
 

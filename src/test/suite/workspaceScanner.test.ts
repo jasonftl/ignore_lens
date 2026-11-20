@@ -30,6 +30,40 @@ suite('WorkspaceScanner Test Suite', () => {
         }
     });
 
+    test('cancels pending creates by exact path for known files and by subtree for directories', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const file = vscode.Uri.joinPath(folder.uri, 'ordinary.txt');
+        const directory = vscode.Uri.joinPath(folder.uri, 'gone-directory');
+        const child = vscode.Uri.joinPath(directory, 'pending.txt');
+        const sibling = vscode.Uri.joinPath(folder.uri, 'sibling.txt');
+        const complete: Array<(stat: vscode.FileStat) => void> = [];
+        const scanner = new WorkspaceScanner(async () => [file], () => new Promise(resolve => complete.push(resolve)));
+        const pending = (scanner as unknown as { pendingCreates: Map<string, symbol> }).pendingCreates;
+        const keys = pending.keys.bind(pending);
+        let walks = 0;
+        pending.keys = () => {
+            walks++;
+            return keys();
+        };
+        try {
+            await scanner.getFilesInFolder(folder);
+            const creates = [file, child, sibling].map(uri => scanner.addPath(uri));
+            assert.strictEqual(complete.length, 3);
+
+            assert.ok(scanner.removePath(file));
+            assert.strictEqual(walks, 0);
+            assert.ok(scanner.removePath(directory));
+            assert.strictEqual(walks, 1);
+
+            for (const finish of complete) finish({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: 0 });
+            assert.deepStrictEqual(await Promise.all(creates), [undefined, undefined, 'file']);
+            assert.deepStrictEqual([...(await scanner.getFilesInFolder(folder)).files], ['sibling.txt']);
+        } finally {
+            scanner.dispose();
+        }
+    });
+
     test('removes a cached link warning on deletion and deletes known files directly', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);

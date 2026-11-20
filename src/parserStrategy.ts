@@ -403,23 +403,71 @@ export class P4ignoreParser implements ILineParser {
 
 }
 
+function isValidHelmPattern(pattern: string): boolean {
+    const characters = Array.from(pattern);
+    const escapes = process.platform !== 'win32';
+    let index = 0;
+    const readClassMember = () => {
+        const char = characters[index++];
+        if (char === undefined || char === '-' || char === ']') return false;
+        return !escapes || char !== '\\' || index++ < characters.length;
+    };
+
+    while (index < characters.length) {
+        const char = characters[index++];
+        if (escapes && char === '\\') {
+            if (index++ === characters.length) return false;
+        } else if (char === '[') {
+            if (characters[index] === '^') index++;
+            do {
+                if (!readClassMember()) return false;
+                if (characters[index] === '-') {
+                    index++;
+                    if (!readClassMember()) return false;
+                }
+            } while (characters[index] !== ']');
+            index++;
+        }
+    }
+    return true;
+}
+
 export function getParser(fileType: IgnoreFileType): ILineParser {
     switch (fileType) {
         case 'vscodeignore': return new VscodeignoreParser();
+        case 'npmignore': {
+            const parser = new VscodeignoreParser();
+            return {
+                parseLine(line) {
+                    const rule = parser.parseLine(line);
+                    rule.isNegation = ((/^!+/.exec(rule.pattern)?.[0].length ?? 0) % 2) === 1;
+                    return rule;
+                }
+            };
+        }
         case 'helmignore': {
             const parser = new VscodeignoreParser();
             return {
                 parseLine(line) {
                     const rule = parser.parseLine(line);
-                    if (rule.type === 'pattern' && rule.pattern.includes('**')) {
-                        rule.warning = 'Helm does not support the ** wildcard.';
+                    if (rule.type === 'pattern') {
+                        if (rule.pattern.includes('**')) {
+                            rule.warning = 'Helm does not support the ** wildcard.';
+                        } else if (!isValidHelmPattern(rule.pattern)) {
+                            rule.warning = 'Invalid Helm ignore pattern.';
+                        }
                     }
                     return rule;
                 }
             };
         }
-        case 'glob-no-negation':
-        case 'bazelignore': return new GlobNoNegationParser();
+        case 'glob-no-negation': return new GlobNoNegationParser();
+        case 'bazelignore': return {
+            parseLine(line) {
+                const type = line === '' ? 'blank' : line.startsWith('#') ? 'comment' : 'pattern';
+                return { type, pattern: type === 'pattern' ? line : '', isNegation: false, isDirectory: line.endsWith('/'), rawText: line };
+            }
+        };
         case 'tfignore':
         case 'p4ignore': return new P4ignoreParser();
         case 'dockerignore': return new DockerignoreParser();

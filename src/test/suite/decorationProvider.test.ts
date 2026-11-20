@@ -20,7 +20,7 @@ suite('DecorationProvider Test Suite', () => {
     test('warns about unsupported Helm syntax and evaluates CVS tokens and resets', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
-        const scanner = new WorkspaceScanner(async () => ['app.ts', 'file10.txt', 'sub/cache.tmp']
+        const scanner = new WorkspaceScanner(async () => ['app.ts', 'file10.txt', 'sub/cache.tmp', 'a.txt', '-.txt']
             .map(file => vscode.Uri.joinPath(folder.uri, file)));
         const provider = new DecorationProvider(scanner);
         const editor = (name: string, lines: string[]) => ({
@@ -30,12 +30,16 @@ suite('DecorationProvider Test Suite', () => {
             },
             setDecorations() { /* Read the computed decorations from the cache. */ }
         } as unknown as vscode.TextEditor);
-        const helm = editor('.helmignore', ['**/*.tmp']);
+        const helm = editor('.helmignore', ['**/*.tmp', '[a-].txt', '[a-c].txt']);
         const cvs = editor('.cvsignore', ['app.ts file10.txt', '! app.ts', '!']);
         try {
             await Promise.all([provider.updateDecorations(helm), provider.updateDecorations(cvs)]);
-            assert.match(decorationCache.get(helm.document.uri.toString())?.warnings[0]?.message ?? '', /Helm does not support/);
-            assert.deepStrictEqual(decorationCache.get(helm.document.uri.toString())?.lineData, []);
+            const helmData = decorationCache.get(helm.document.uri.toString());
+            assert.deepStrictEqual(helmData?.warnings, [
+                { lineIndex: 0, message: 'Helm does not support the ** wildcard.' },
+                { lineIndex: 1, message: 'Invalid Helm ignore pattern.' }
+            ]);
+            assert.deepStrictEqual(helmData?.lineData.map(row => [row.lineIndex, row.col1, row.setSize]), [[2, '+1', 1]]);
             assert.deepStrictEqual(decorationCache.get(cvs.document.uri.toString())?.lineData.map(row => [row.col1, row.setSize]),
                 [['+2', 2], ['−1', 1], ['−1', 0]]);
         } finally {

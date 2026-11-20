@@ -1,4 +1,5 @@
-import ignore from 'ignore';
+import { createGitignoreRules, IgnoreRules } from './gitignoreRules';
+import { matchesPathOrParent, NpmignoreRule } from './matcherStrategy';
 import { AdvancedCountResult, IgnoreFileType } from './types';
 
 export interface ICountCalculator {
@@ -6,10 +7,10 @@ export interface ICountCalculator {
 }
 
 export class GitignoreCountCalculator implements ICountCalculator {
-    private readonly rules: ignore.Ignore;
+    private readonly rules: IgnoreRules;
 
     constructor(ignoreCase = false) {
-        this.rules = ignore({ ignoreCase });
+        this.rules = createGitignoreRules(ignoreCase);
     }
 
     public calculateCount(files: string[], isNegation: boolean, ignored: Set<string>, pattern: string): AdvancedCountResult {
@@ -54,6 +55,53 @@ class SequentialCountCalculator implements ICountCalculator {
     }
 }
 
+class NpmignoreCountCalculator implements ICountCalculator {
+    private readonly rules: NpmignoreRule[] = [];
+    private readonly sequential = new SequentialCountCalculator();
+
+    public calculateCount(files: string[], isNegation: boolean, ignored: Set<string>, pattern: string): AdvancedCountResult {
+        const rule = new NpmignoreRule(pattern);
+        this.rules.push(rule);
+        if (!isNegation) return this.sequential.calculateCount(files, false, ignored);
+
+        let actionCount = 0;
+        let noActionCount = 0;
+        let blockedCount = 0;
+        const directories = new Map<string, boolean>();
+        const excludedDirectory = (path: string) => {
+            let excluded = directories.get(path);
+            if (excluded === undefined) {
+                excluded = this.isExcluded(path, true);
+                directories.set(path, excluded);
+            }
+            return excluded;
+        };
+
+        // npm can traverse a directory after a path-specific exception opens it.
+        for (const file of files) {
+            const slash = file.lastIndexOf('/');
+            const blocked = slash !== -1 && matchesPathOrParent(file.slice(0, slash), excludedDirectory);
+            if (!blocked && ignored.has(file) && !this.isExcluded(file, false)) {
+                ignored.delete(file);
+                actionCount++;
+            } else if (matchesPathOrParent(file, candidate =>
+                candidate === file ? rule.matchesPath(candidate) : rule.matchesDirectory(candidate, false))) {
+                if (blocked) blockedCount++;
+                else noActionCount++;
+            }
+        }
+        return { actionCount, noActionCount, blockedCount, setSize: ignored.size };
+    }
+
+    private isExcluded(path: string, directory: boolean): boolean {
+        for (let index = this.rules.length - 1; index >= 0; index--) {
+            const rule = this.rules[index];
+            if (directory ? rule.matchesDirectory(path) : rule.matchesPath(path)) return !rule.isNegation;
+        }
+        return false;
+    }
+}
+
 export class VscodeignoreCountCalculator extends SequentialCountCalculator {
     private readonly exceptions = new Set<string>();
 
@@ -71,6 +119,7 @@ export function getCountCalculator(fileType: IgnoreFileType, ignoreCase = false)
     switch (fileType) {
         case 'vscodeignore': return new VscodeignoreCountCalculator();
         case 'gitignore': return new GitignoreCountCalculator(ignoreCase);
+        case 'npmignore': return new NpmignoreCountCalculator();
         default: return new SequentialCountCalculator();
     }
 }
