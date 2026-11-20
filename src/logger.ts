@@ -22,8 +22,8 @@ function getTimestamp(): string {
     return '[' + hours + ':' + minutes + ':' + seconds + '.' + millis + ']';
 }
 
-export function log(message: string): void {
-    if (isDebugEnabled()) {
+export function log(message: string, force = false): void {
+    if (force || isDebugEnabled()) {
         getOutputChannel().appendLine(getTimestamp() + ' ' + message);
     }
 }

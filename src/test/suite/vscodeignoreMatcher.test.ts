@@ -22,6 +22,7 @@ suite('VscodeignoreMatcher Test Suite', () => {
         { pattern: '.*', expected: ['.hidden'] },
         { pattern: '**/.*', expected: ['.hidden', 'src/.hidden'] },
         { pattern: 'folder/', expected: ['folder/file.txt', 'folder/sub/file.txt'] },
+        { pattern: 'folder', expected: ['folder/file.txt', 'folder/sub/file.txt'] },
         { pattern: 'folder/**', expected: ['folder/file.txt', 'folder/sub/file.txt'] },
         { pattern: 'node_modules/', expected: ['node_modules/lodash/index.js'] },
         { pattern: '!dist/**', expected: ['dist/bundle.js', 'dist/assets/logo.png'] },

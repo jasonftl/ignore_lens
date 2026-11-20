@@ -83,28 +83,28 @@ suite('GitignoreParser Test Suite', () => {
             // "file\ " should become "file " (backslash removed, space kept)
             const result = parser.parseLine('file\\ ');
             assert.strictEqual(result.type, 'pattern');
-            assert.strictEqual(result.pattern, 'file ');
+            assert.strictEqual(result.pattern, 'file\\ ');
         });
 
         test('should preserve multiple escaped trailing spaces', () => {
-            // "file\ \ \ " should become "file   " (3 spaces preserved)
+            // Keep all escape sequences for the matcher.
             const result = parser.parseLine('file\\ \\ \\ ');
             assert.strictEqual(result.type, 'pattern');
-            assert.strictEqual(result.pattern, 'file   ');
+            assert.strictEqual(result.pattern, 'file\\ \\ \\ ');
         });
 
         test('should preserve escaped trailing tab', () => {
-            // "file\<tab>" should become "file<tab>"
+            // Keep the escape before the tab.
             const result = parser.parseLine('file\\\t');
             assert.strictEqual(result.type, 'pattern');
-            assert.strictEqual(result.pattern, 'file\t');
+            assert.strictEqual(result.pattern, 'file\\\t');
         });
 
         test('should preserve mixed escaped trailing whitespace', () => {
-            // "file\ \<tab>\ " should become "file <tab> " (space, tab, space)
+            // Keep mixed escape sequences for the matcher.
             const result = parser.parseLine('file\\ \\\t\\ ');
             assert.strictEqual(result.type, 'pattern');
-            assert.strictEqual(result.pattern, 'file \t ');
+            assert.strictEqual(result.pattern, 'file\\ \\\t\\ ');
         });
 
         test('should preserve unescaped trailing tabs (gitignore spec)', () => {

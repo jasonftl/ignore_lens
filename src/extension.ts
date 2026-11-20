@@ -41,34 +41,21 @@ export function activate(context: vscode.ExtensionContext): void {
     // Initialise the decoration provider
     decorationProvider = new DecorationProvider(workspaceScanner);
 
-    // Register for active editor changes
-    const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(editor => {
-        if (editor && isSupportedIgnoreFile(editor.document) && decorationProvider) {
-            decorationProvider.triggerUpdateDecorations(editor, false, 'editor switch', true);
-        } else {
-            decorationProvider?.cancelUpdate();
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor && isSupportedIgnoreFile(editor.document)) {
+            decorationProvider?.triggerUpdateDecorations(editor, false, 'editor switch', true);
         }
-    });
-    context.subscriptions.push(editorChangeDisposable);
-
-    // Register for document changes (with debounce)
-    const documentChangeDisposable = vscode.workspace.onDidChangeTextDocument(event => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && event.document === editor.document && isSupportedIgnoreFile(event.document) && decorationProvider) {
-            decorationProvider.triggerUpdateDecorations(editor, true, 'ignore file edit');
-        }
-    });
-    context.subscriptions.push(documentChangeDisposable);
-
-    // Register for document open events (also fires on language mode change)
-    const documentOpenDisposable = vscode.workspace.onDidOpenTextDocument(document => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document === document && isSupportedIgnoreFile(document) && decorationProvider) {
-            decorationProvider.triggerUpdateDecorations(editor, false, 'document open');
-        }
-    });
-    context.subscriptions.push(documentOpenDisposable);
-
+    }));
+    context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(editors => {
+        decorationProvider?.retainEditors(editors.filter(editor => isSupportedIgnoreFile(editor.document)));
+        refreshVisibleEditors('visible editors changed');
+    }));
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
+        refreshVisibleEditors('ignore file edit', undefined, false, event.document);
+    }));
+    context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(document => {
+        refreshVisibleEditors('document open', undefined, false, document);
+    }));
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => {
         decorationCache.delete(document.uri.toString());
     }));
@@ -85,7 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         void workspaceScanner.addPath(uri).then(created => {
             if (created) {
-                refreshActiveEditor('file created', uri);
+                refreshVisibleEditors('file created', uri, created === 'rescan');
             }
         }, error => log('Failed to cache created file: ' + String(error)));
     });
@@ -93,63 +80,44 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const deleteDisposable = fileWatcher.onDidDelete(uri => {
         if (workspaceScanner?.removePath(uri)) {
-            refreshActiveEditor('file deleted', uri);
+            refreshVisibleEditors('file deleted', uri);
         }
     });
     context.subscriptions.push(deleteDisposable);
 
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        refreshActiveEditor('workspace folders changed');
+        refreshVisibleEditors('workspace folders changed');
     }));
 
-    // Register for configuration changes
-    const configDisposable = vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('ignorelens')) {
-            // Notify decoration provider of config change (may need to recreate decoration types)
-            if (decorationProvider) {
-                decorationProvider.onConfigurationChanged();
-            }
-            refreshActiveEditor('config change');
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+        const linkSettingChanged = event.affectsConfiguration('search.followSymlinks');
+        if (linkSettingChanged) workspaceScanner?.invalidate();
+        if (event.affectsConfiguration('ignorelens')) decorationProvider?.onConfigurationChanged();
+        if (linkSettingChanged || event.affectsConfiguration('ignorelens')) {
+            refreshVisibleEditors('config change');
         }
-        if (event.affectsConfiguration('search.followSymlinks')) {
-            decorationProvider?.cancelUpdate();
-            refreshActiveEditor('symlink setting changed', undefined, true);
-        }
-    });
-    context.subscriptions.push(configDisposable);
+    }));
 
-    // Initial decoration update for the active editor
-    if (vscode.window.activeTextEditor && isSupportedIgnoreFile(vscode.window.activeTextEditor.document)) {
-        void decorationProvider.updateDecorations(vscode.window.activeTextEditor);
-    }
+    refreshVisibleEditors('activation');
 }
 
-/**
- * Refreshes decorations for the active editor if it's an ignore file.
- *
- * @param reason - Optional reason for the refresh (for logging)
- * @param changedUri - Optional changed path used to filter irrelevant workspace events
- */
-function refreshActiveEditor(reason?: string, changedUri?: vscode.Uri, fresh = false): void {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !isSupportedIgnoreFile(editor.document) || !decorationProvider) {
-        return;
-    }
+function refreshVisibleEditors(reason: string, changedUri?: vscode.Uri, wholeFolder = false, document?: vscode.TextDocument): void {
+    for (const editor of vscode.window.visibleTextEditors) {
+        if (!isSupportedIgnoreFile(editor.document) || document && document !== editor.document) continue;
 
-    if (changedUri) {
-        const editorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        const changedFolder = vscode.workspace.getWorkspaceFolder(changedUri);
-        if (!editorFolder || editorFolder.uri.toString() !== changedFolder?.uri.toString()) {
-            return;
+        if (changedUri) {
+            const editorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            const changedFolder = vscode.workspace.getWorkspaceFolder(changedUri);
+            if (!editorFolder || editorFolder.uri.toString() !== changedFolder?.uri.toString()) continue;
+
+            const ignoreFileDir = path.dirname(editor.document.uri.fsPath);
+            if (!wholeFolder && !isPathWithin(ignoreFileDir, changedUri.fsPath) && !isPathWithin(changedUri.fsPath, ignoreFileDir)) {
+                continue;
+            }
         }
 
-        const ignoreFileDir = path.dirname(editor.document.uri.fsPath);
-        if (!isPathWithin(ignoreFileDir, changedUri.fsPath) && !isPathWithin(changedUri.fsPath, ignoreFileDir)) {
-            return;
-        }
+        decorationProvider?.triggerUpdateDecorations(editor, true, reason);
     }
-
-    decorationProvider.triggerUpdateDecorations(editor, true, reason, fresh);
 }
 
 function isPathWithin(parent: string, candidate: string): boolean {

@@ -2,9 +2,10 @@
 // Manages line decorations for ignore pattern feedback
 
 import * as vscode from 'vscode';
+import { execFile } from 'node:child_process';
 import * as path from 'path';
 import { ScanWarning, WorkspaceScanner } from './workspaceScanner';
-import { DecorationStyle, IgnoreFileType } from './types';
+import { AdvancedCountResult, DecorationStyle, IgnoreFileType } from './types';
 import { log, logTiming } from './logger';
 import { getParser, ILineParser } from './parserStrategy';
 import { getMatcher, IPatternMatcher } from './matcherStrategy';
@@ -14,6 +15,7 @@ import { ALL_SUPPORTED_FILES, SUPPORTED_FILE_TYPES } from './supportedFiles';
 
 interface LineCollectionResult {
     lineData: LineDecorationData[];
+    warnings: LineWarning[];
     maxLineLength: number;
     maxCol1Width: number;
     maxCol3Width: number;
@@ -21,6 +23,19 @@ interface LineCollectionResult {
     totalNotInSet: number;
     totalBlocked: number;
     finalSetSize: number;
+}
+
+interface EditorUpdate {
+    timeout?: NodeJS.Timeout;
+    fresh: boolean;
+    scanning?: boolean;
+}
+
+function readGitIgnoreCase(directory: string): Promise<boolean> {
+    return new Promise(resolve => {
+        execFile('git', ['-C', directory, 'config', '--type=bool', '--get', 'core.ignoreCase'],
+            { timeout: 5000, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === 'true'));
+    });
 }
 
 /**
@@ -34,12 +49,10 @@ export class DecorationProvider implements vscode.Disposable {
     private staleNoMatchDecorationType: vscode.TextEditorDecorationType | undefined;
     private staleMatchCountDecorationType: vscode.TextEditorDecorationType | undefined;
     private readonly scanStatusDecorationType: vscode.TextEditorDecorationType;
-    private scanningEditor?: vscode.TextEditor;
-    private updateTimeout: NodeJS.Timeout | undefined;
-    private updateVersion: number = 0;
+    private readonly updates = new Map<vscode.TextEditor, EditorUpdate>();
     private currentStyle: DecorationStyle;
     private showMatchCount: boolean;
-    private readonly matchers = new Map<IgnoreFileType, IPatternMatcher>();
+    private readonly matchers = new Map<IgnoreFileType | 'gitignore-ignore-case', IPatternMatcher>();
 
     /**
      * Creates a new DecorationProvider.
@@ -116,49 +129,6 @@ export class DecorationProvider implements vscode.Disposable {
     }
 
     /**
-     * Gets stale colours, using user customisations if defined, otherwise inline hex defaults.
-     * This avoids the "black colours on update" issue where new theme colours aren't registered
-     * until VS Code restarts.
-     *
-     * @returns Object with colour values (either hex strings or ThemeColor IDs)
-     */
-    private getStaleColours(): {
-        matchCount: string | { id: string };
-        noMatchForeground: string | { id: string };
-        noMatchBackground: string | { id: string };
-        negation: string | { id: string };
-    } {
-        const config = vscode.workspace.getConfiguration('workbench');
-        const customisations = config.get<Record<string, string>>('colorCustomizations', {});
-
-        // Default hex values (from package.json defaults for dark theme)
-        const defaults = {
-            matchCount: '#3d5c30',
-            noMatchForeground: '#8b2020',
-            noMatchBackground: '#2a0a0a40',
-            negation: '#7a6600'
-        };
-
-        // Use ThemeColor reference if user has customised, otherwise use inline hex
-        const result = {
-            matchCount: customisations['ignorelens.staleMatchCountForeground']
-                ? { id: 'ignorelens.staleMatchCountForeground' }
-                : defaults.matchCount,
-            noMatchForeground: customisations['ignorelens.staleNoMatchForeground']
-                ? { id: 'ignorelens.staleNoMatchForeground' }
-                : defaults.noMatchForeground,
-            noMatchBackground: customisations['ignorelens.staleNoMatchBackground']
-                ? { id: 'ignorelens.staleNoMatchBackground' }
-                : defaults.noMatchBackground,
-            negation: customisations['ignorelens.staleNegationForeground']
-                ? { id: 'ignorelens.staleNegationForeground' }
-                : defaults.negation
-        };
-
-        return result;
-    }
-
-    /**
      * Creates decoration types based on the current style setting.
      * Creates both normal and stale (darker) versions for cached data display.
      */
@@ -185,7 +155,6 @@ export class DecorationProvider implements vscode.Disposable {
             this.staleNoMatchDecorationType = undefined;
         } else {
             // Get stale colours (uses inline hex by default, ThemeColor if user customised)
-            const staleColours = this.getStaleColours();
 
             // Build decoration options based on style (only for no-match patterns)
             const noMatchOptions: vscode.DecorationRenderOptions = { isWholeLine: true };
@@ -193,12 +162,12 @@ export class DecorationProvider implements vscode.Disposable {
 
             if (style === 'background' || style === 'both') {
                 noMatchOptions.backgroundColor = { id: 'ignorelens.noMatchBackground' };
-                staleNoMatchOptions.backgroundColor = staleColours.noMatchBackground;
+                staleNoMatchOptions.backgroundColor = { id: 'ignorelens.staleNoMatchBackground' };
             }
 
             if (style === 'text' || style === 'both') {
                 noMatchOptions.color = { id: 'ignorelens.noMatchForeground' };
-                staleNoMatchOptions.color = staleColours.noMatchForeground;
+                staleNoMatchOptions.color = { id: 'ignorelens.staleNoMatchForeground' };
             }
 
             // Create the decoration types (normal and stale)
@@ -222,6 +191,9 @@ export class DecorationProvider implements vscode.Disposable {
     public onConfigurationChanged(): void {
         if (!vscode.workspace.getConfiguration('ignorelens').get<boolean>('enabled', true)) {
             this.cancelUpdate();
+            for (const editor of vscode.window.visibleTextEditors) {
+                if (this.isSupportedIgnoreFile(editor.document)) this.clearDecorations(editor);
+            }
         }
         const newStyle = this.getDecorationStyle();
         const newShowMatchCount = this.getShowMatchCount();
@@ -249,38 +221,37 @@ export class DecorationProvider implements vscode.Disposable {
      * @param editor - The text editor to update decorations for
      */
     public async updateDecorations(editor: vscode.TextEditor, fresh = false): Promise<void> {
-        // Track this update's version to prevent stale results from overwriting newer ones
-        this.updateVersion = this.updateVersion + 1;
-        const thisVersion = this.updateVersion;
-        this.clearProgress();
+        this.cancelEditorUpdate(editor);
+        const update: EditorUpdate = { fresh };
+        this.updates.set(editor, update);
+        const isCurrent = () => this.updates.get(editor) === update;
 
         try {
-            await this.runUpdate(editor, thisVersion, fresh);
+            await this.runUpdate(editor, update, isCurrent);
         } catch (error) {
-            if (thisVersion !== this.updateVersion) {
-                return;
-            }
-            this.clearProgress();
+            if (!isCurrent()) return;
+            this.clearProgress(editor, update);
             if (error instanceof vscode.CancellationError) return;
 
-            log('Decoration update failed: ' + String(error));
+            log('Decoration update failed: ' + String(error), true);
             try {
                 if (!decorationCache.has(editor.document.uri.toString())) this.clearDecorations(editor);
                 this.showScanStatus(editor, [{ lineIndex: 0, message: 'Scan failed. Check the IgnoreLens output for details.' }]);
             } catch (clearError) {
                 log('Failed to clear decorations: ' + String(clearError));
             }
+        } finally {
+            if (isCurrent()) this.updates.delete(editor);
         }
     }
 
-    private async runUpdate(editor: vscode.TextEditor, thisVersion: number, fresh: boolean): Promise<void> {
+    private async runUpdate(editor: vscode.TextEditor, update: EditorUpdate, isCurrent: () => boolean): Promise<void> {
         // Check if extension is enabled
         const config = vscode.workspace.getConfiguration('ignorelens');
         const enabled = config.get<boolean>('enabled', true);
 
         // Clear all decorations (normal and stale) if disabled
         if (!enabled) {
-            this.cancelUpdate();
             this.clearDecorations(editor);
             return;
         }
@@ -301,31 +272,35 @@ export class DecorationProvider implements vscode.Disposable {
             log('Showing cached decorations (stale) while refreshing...');
         }
 
-        // Detect file type and get appropriate strategies
+        const ignoreFileDir = path.dirname(document.uri.fsPath);
         const fileType = this.detectFileType(document);
-        const parser: ILineParser = getParser(fileType);
-        let matcher = this.matchers.get(fileType);
-        if (!matcher) {
-            matcher = getMatcher(fileType);
-            this.matchers.set(fileType, matcher);
-        }
-        const countCalculator: ICountCalculator = getCountCalculator(fileType);
+        const ignoreCase = document.uri.scheme === 'file' && path.basename(document.uri.fsPath).toLowerCase() === '.gitignore'
+            && await readGitIgnoreCase(ignoreFileDir);
+        if (!isCurrent()) return;
 
-        // Get the workspace folder containing this ignore file
+        const parser = getParser(fileType);
+        const matcherKey = ignoreCase ? 'gitignore-ignore-case' : fileType;
+        let matcher = this.matchers.get(matcherKey);
+        if (!matcher) {
+            matcher = getMatcher(fileType, ignoreCase);
+            this.matchers.set(matcherKey, matcher);
+        }
+        const countCalculator = getCountCalculator(fileType, ignoreCase);
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-        this.workspaceScanner.cancelScans(workspaceFolder);
         if (!workspaceFolder) {
             this.clearDecorations(editor);
             return;
         }
 
         // Get files only from this workspace folder (not other roots in multi-root workspace)
-        this.scanningEditor = editor;
+        update.scanning = true;
         this.showScanStatus(editor, cachedDecorations?.warnings ?? [], 'Scanning...');
         let previousProgress = 'Scanning...';
         let nextProgress = performance.now() + 1000 / 3;
+        const fresh = update.fresh;
+        update.fresh = false;
         const scan = await this.workspaceScanner.getFilesInFolder(workspaceFolder, fresh, message => {
-            if (thisVersion === this.updateVersion && message !== previousProgress && performance.now() >= nextProgress) {
+            if (isCurrent() && message !== previousProgress && performance.now() >= nextProgress) {
                 this.showScanStatus(editor, cachedDecorations?.warnings ?? [], message);
                 previousProgress = message;
                 nextProgress = performance.now() + 1000 / 3;
@@ -333,13 +308,9 @@ export class DecorationProvider implements vscode.Disposable {
         });
 
         // Check if a newer update has started while we were scanning
-        if (thisVersion !== this.updateVersion) {
-            log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
-            return;
-        }
+        if (!isCurrent()) return;
 
         // Handle nested ignore files - make paths relative to the ignore file's directory
-        const ignoreFileDir = path.dirname(document.uri.fsPath);
         const workspaceRoot = workspaceFolder.uri.fsPath;
         const relativeDirPath = path.relative(workspaceRoot, ignoreFileDir);
         const normalisedRelativeDir = relativeDirPath.split(path.sep).join('/');
@@ -354,12 +325,12 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Collect line data using helper method
-        const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, thisVersion);
+        const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, isCurrent);
         if (!collectionResult) {
-            log('Cancelled stale decoration update (version ' + thisVersion + ')');
+            log('Cancelled stale decoration update');
             return;
         }
-        const { lineData, maxLineLength, maxCol1Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
+        const { lineData, warnings, maxLineLength, maxCol1Width, maxCol3Width, totalShadowed, totalNotInSet, totalBlocked, finalSetSize } = collectionResult;
 
         // Log accurate summary using cumulative set data
         const ignoreFileName = path.basename(document.uri.fsPath);
@@ -367,22 +338,19 @@ export class DecorationProvider implements vscode.Disposable {
         log(summaryText);
 
         // Check again before applying - pattern matching may have taken time
-        if (thisVersion !== this.updateVersion) {
-            log('Discarding stale decoration update (version ' + thisVersion + ' superseded by ' + this.updateVersion + ')');
-            return;
-        }
+        if (!isCurrent()) return;
 
         // Store fresh data to cache only after confirming this update is still current
         const cachedData: CachedDecorations = {
             lineData: lineData,
-            warnings: this.scanWarnings(document, parser, matcher, normalisedRelativeDir, scan.warnings, scan.fallback),
+            warnings: [...this.scanWarnings(document, parser, matcher, normalisedRelativeDir, scan.warnings, scan.fallback), ...warnings],
             maxLineLength: maxLineLength,
             maxCol1Width: maxCol1Width,
             maxCol3Width: maxCol3Width
         };
         decorationCache.set(documentUri, cachedData);
 
-        this.scanningEditor = undefined;
+        update.scanning = false;
         this.applyDecorationsFromData(editor, cachedData, false);
 
         log('Decoration update complete (fresh data applied)');
@@ -465,10 +433,9 @@ export class DecorationProvider implements vscode.Disposable {
         editor.setDecorations(this.scanStatusDecorationType, decorations);
     }
 
-    private clearProgress(): void {
-        if (!this.scanningEditor) return;
-        const editor = this.scanningEditor;
-        this.scanningEditor = undefined;
+    private clearProgress(editor: vscode.TextEditor, update: EditorUpdate): void {
+        if (!update.scanning) return;
+        update.scanning = false;
         this.showScanStatus(editor, decorationCache.get(editor.document.uri.toString())?.warnings ?? []);
     }
 
@@ -489,9 +456,10 @@ export class DecorationProvider implements vscode.Disposable {
         matcher: IPatternMatcher,
         countCalculator: ICountCalculator,
         workspaceFiles: string[],
-        thisVersion: number
+        isCurrent: () => boolean
     ): Promise<LineCollectionResult | undefined> {
         const lineData: LineDecorationData[] = [];
+        const warnings: LineWarning[] = [];
         let maxLineLength = 0;
 
         // Find max line length across all lines (including comments)
@@ -510,10 +478,6 @@ export class DecorationProvider implements vscode.Disposable {
         const patternsPerYield = Math.max(1, Math.floor(10000 / Math.max(1, workspaceFiles.length)));
         // Cumulative set tracking which files are ignored
         const cumulativeSet = new Set<string>();
-        // Track ignored directories to block negations for files under them (gitignore only)
-        const ignoredDirs = new Set<string>();
-        // Track files already decided by an earlier pattern (p4ignore first-match-wins only)
-        const decidedSet = new Set<string>();
         // Accumulators for debug summary totals
         let totalShadowed = 0;   // Sum of ≡ (noActionCount for normal patterns)
         let totalNotInSet = 0;   // Sum of ∅ (noActionCount for negation patterns)
@@ -528,29 +492,47 @@ export class DecorationProvider implements vscode.Disposable {
                 continue;
             }
 
+            if (parsedLine.warning) {
+                warnings.push({ lineIndex, message: parsedLine.warning });
+                continue;
+            }
+
             if (patternCount > 0 && patternCount % patternsPerYield === 0) {
                 await new Promise<void>(resolve => setImmediate(resolve));
-                if (thisVersion !== this.updateVersion) {
+                if (!isCurrent()) {
                     return undefined;
                 }
             }
 
-            // Check the pattern in chunks so large workspaces remain cancellable.
-            const matchingFiles = await this.findMatchesCooperatively(matcher, parsedLine.pattern, workspaceFiles, thisVersion);
-            if (!matchingFiles) {
-                return undefined;
+            const reset = parsedLine.tokens?.lastIndexOf('!') ?? -1;
+            const patterns = parsedLine.tokens?.slice(reset + 1) ?? [parsedLine.pattern];
+            const matches = await this.findLineMatches(matcher, patterns, workspaceFiles, isCurrent);
+            if (!matches) return undefined;
+
+            let isNegation = parsedLine.isNegation;
+            let removed = 0;
+            let countResult: AdvancedCountResult;
+            if (reset !== -1) {
+                const next = new Set(matches);
+                for (const file of cumulativeSet) {
+                    if (!next.has(file)) removed++;
+                }
+                let added = 0;
+                for (const file of next) {
+                    if (!cumulativeSet.has(file)) added++;
+                }
+                cumulativeSet.clear();
+                for (const file of next) cumulativeSet.add(file);
+                isNegation = added === 0;
+                countResult = { actionCount: isNegation ? removed : added, noActionCount: 0, blockedCount: 0, setSize: next.size };
+            } else {
+                countResult = countCalculator.calculateCount(matches, isNegation, cumulativeSet, parsedLine.pattern);
             }
+            const { actionCount, noActionCount, blockedCount, setSize } = countResult;
             const lineLength = line.text.length;
 
-            // Calculate counts using cumulative set tracking (strategy handles blocking rules)
-            const countResult = countCalculator.calculateCount(matchingFiles, parsedLine.isNegation, parsedLine.isDirectory, cumulativeSet, ignoredDirs, parsedLine.pattern, decidedSet);
-            const actionCount = countResult.actionCount;
-            const noActionCount = countResult.noActionCount;
-            const blockedCount = countResult.blockedCount;
-            const setSize = countResult.setSize;
-
             // Accumulate totals for debug summary
-            if (parsedLine.isNegation) {
+            if (isNegation) {
                 totalNotInSet = totalNotInSet + noActionCount;
                 totalBlocked = totalBlocked + blockedCount;
             } else {
@@ -561,7 +543,7 @@ export class DecorationProvider implements vscode.Disposable {
             let col1: string;
             let col2 = '';
 
-            if (parsedLine.isNegation) {
+            if (isNegation) {
                 col1 = '−' + String(actionCount);
                 // Build middle column: ∅N and/or ✗N
                 if (noActionCount > 0 && blockedCount > 0) {
@@ -572,14 +554,14 @@ export class DecorationProvider implements vscode.Disposable {
                     col2 = '✗' + String(blockedCount);
                 }
             } else {
-                col1 = '+' + String(actionCount);
+                col1 = '+' + String(actionCount) + (removed ? ' −' + String(removed) : '');
                 if (noActionCount > 0) {
                     col2 = '≡' + String(noActionCount);
                 }
             }
             const col3 = '(' + String(setSize) + ')';
 
-            lineData.push({ lineIndex, lineLength, actionCount, noActionCount, blockedCount, setSize, isNegation: parsedLine.isNegation, col1, col2, col3 });
+            lineData.push({ lineIndex, lineLength, actionCount, noActionCount, blockedCount, setSize, isNegation, col1, col2, col3 });
             patternCount = patternCount + 1;
         }
 
@@ -601,6 +583,7 @@ export class DecorationProvider implements vscode.Disposable {
 
         return {
             lineData,
+            warnings,
             maxLineLength,
             maxCol1Width,
             maxCol3Width,
@@ -611,11 +594,26 @@ export class DecorationProvider implements vscode.Disposable {
         };
     }
 
+    private async findLineMatches(
+        matcher: IPatternMatcher, patterns: string[], files: string[], isCurrent: () => boolean
+    ): Promise<string[] | undefined> {
+        if (patterns.length === 1) {
+            return this.findMatchesCooperatively(matcher, patterns[0], files, isCurrent);
+        }
+        const all = new Set<string>();
+        for (const pattern of patterns) {
+            const matches = await this.findMatchesCooperatively(matcher, pattern, files, isCurrent);
+            if (!matches) return undefined;
+            for (const file of matches) all.add(file);
+        }
+        return Array.from(all);
+    }
+
     private async findMatchesCooperatively(
         matcher: IPatternMatcher,
         pattern: string,
         files: string[],
-        thisVersion: number
+        isCurrent: () => boolean
     ): Promise<string[] | undefined> {
         const chunkSize = 10000;
         if (files.length <= chunkSize) {
@@ -628,7 +626,7 @@ export class DecorationProvider implements vscode.Disposable {
             matchingFiles.push(...matcher.findMatches(pattern, chunk));
 
             await new Promise<void>(resolve => setImmediate(resolve));
-            if (thisVersion !== this.updateVersion) {
+            if (!isCurrent()) {
                 return undefined;
             }
         }
@@ -660,7 +658,6 @@ export class DecorationProvider implements vscode.Disposable {
         const matchCountDecorations: vscode.DecorationOptions[] = [];
 
         // Get stale colours if needed
-        const staleColours = useStaleColours ? this.getStaleColours() : null;
 
         // Build decorations from line data
         for (const data of lineData) {
@@ -689,22 +686,11 @@ export class DecorationProvider implements vscode.Disposable {
                 // Build aligned output with two nbsp between columns
                 const countText = col1Padded + nbsp + nbsp + col3Padded + nbsp + nbsp + col2;
 
-                // Set colour based on pattern type
-                let countColour: string | { id: string };
-                if (isNegation) {
-                    countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
-                } else {
-                    // Colour: green if adding files, yellow if shadowed (all already in set), red if no matches
-                    if (actionCount > 0) {
-                        countColour = staleColours ? staleColours.matchCount : { id: 'ignorelens.matchCountForeground' };
-                    } else if (noActionCount > 0) {
-                        // +0 with files already in set = shadowed by earlier pattern (yellow)
-                        countColour = staleColours ? staleColours.negation : { id: 'ignorelens.negationForeground' };
-                    } else {
-                        // +0 with nothing in set = truly redundant (red)
-                        countColour = staleColours ? staleColours.noMatchForeground : { id: 'ignorelens.noMatchForeground' };
-                    }
-                }
+                const colour = isNegation || (actionCount === 0 && noActionCount > 0)
+                    ? 'negationForeground'
+                    : actionCount > 0 ? 'matchCountForeground' : 'noMatchForeground';
+                const themeColour = useStaleColours ? 'stale' + colour[0].toUpperCase() + colour.slice(1) : colour;
+                const countColour = new vscode.ThemeColor('ignorelens.' + themeColour);
 
                 // Pad with non-breaking spaces to align all counts
                 // Clamp to 0 to prevent RangeError if document has grown since cache was created
@@ -790,42 +776,44 @@ export class DecorationProvider implements vscode.Disposable {
      * @param reason - Optional reason for the update (for logging)
      */
     public triggerUpdateDecorations(editor: vscode.TextEditor, throttle: boolean = false, reason?: string, fresh = false): void {
-        // Cancel matching work as soon as a newer refresh is requested.
-        this.updateVersion = this.updateVersion + 1;
-        this.clearProgress();
+        const pending = this.updates.get(editor);
+        const needsFresh = fresh || !!pending?.fresh;
+        this.cancelEditorUpdate(editor);
 
-        // Clear any pending update
-        if (this.updateTimeout) {
-            clearTimeout(this.updateTimeout);
-            this.updateTimeout = undefined;
-        }
-
+        const run = () => {
+            if (reason) log('Decoration update triggered by: ' + reason);
+            void this.updateDecorations(editor, needsFresh);
+        };
         if (throttle) {
-            const config = vscode.workspace.getConfiguration('ignorelens');
-            const debounceMs = config.get<number>('scanDebounceMs', 500);
-
-            this.updateTimeout = setTimeout(() => {
-                this.updateTimeout = undefined;
-                if (reason) {
-                    log('Decoration update triggered by: ' + reason);
-                }
-                void this.updateDecorations(editor, fresh);
-            }, debounceMs);
+            const debounceMs = vscode.workspace.getConfiguration('ignorelens').get<number>('scanDebounceMs', 500);
+            const update = { fresh: needsFresh, timeout: setTimeout(run, debounceMs) };
+            this.updates.set(editor, update);
         } else {
-            if (reason) {
-                log('Decoration update triggered by: ' + reason);
-            }
-            void this.updateDecorations(editor, fresh);
+            run();
         }
+    }
+
+    private cancelEditorUpdate(editor: vscode.TextEditor): void {
+        const update = this.updates.get(editor);
+        if (!update) return;
+        clearTimeout(update.timeout);
+        this.updates.delete(editor);
+        this.clearProgress(editor, update);
+    }
+
+    public retainEditors(editors: readonly vscode.TextEditor[]): void {
+        const visible = new Set(editors);
+        for (const editor of this.updates.keys()) {
+            if (!visible.has(editor)) this.cancelEditorUpdate(editor);
+        }
+        const folders = editors.flatMap(editor => vscode.workspace.getWorkspaceFolder(editor.document.uri) ?? []);
+        this.workspaceScanner.cancelScans(folders);
     }
 
     public cancelUpdate(): void {
-        this.updateVersion = this.updateVersion + 1;
-        clearTimeout(this.updateTimeout);
-        this.updateTimeout = undefined;
-        this.workspaceScanner.cancelScans();
-        this.clearProgress();
+        this.retainEditors([]);
     }
+
 
     /**
      * Disposes of the decoration provider.

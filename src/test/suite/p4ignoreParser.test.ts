@@ -3,7 +3,7 @@
 
 import * as assert from 'assert';
 import { P4ignoreParser, parseFile } from '../../parserStrategy';
-import { GitignoreMatcher } from '../../matcherStrategy';
+import { getMatcher } from '../../matcherStrategy';
 
 suite('P4ignoreParser Test Suite', () => {
     let parser: P4ignoreParser;
@@ -93,11 +93,11 @@ suite('P4ignoreParser Test Suite', () => {
         });
     });
 
-    suite('end-to-end: parser output drives GitignoreMatcher correctly', () => {
+    suite('parser and matcher', () => {
         // After parsing, patterns flow through GitignoreMatcher. These tests pin down
         // the combined behaviour that P4 users will observe.
 
-        const matcher = new GitignoreMatcher();
+        const matcher = getMatcher('p4ignore');
         const files = ['build.properties', 'lib/build.properties', 'a.dll', 'lib/a.dll', 'src/tool/a.dll'];
 
         test('rooted pattern /build.properties matches root file only', () => {

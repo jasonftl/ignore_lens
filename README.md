@@ -165,8 +165,8 @@ The `stale` colours are shown briefly when switching tabs while cached data refr
 ## Acknowledgements
 
 Developed with assistance from:
-- [Claude Code](https://claude.ai/code) (Opus 4.5- 4.8)
-- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1 - 5.6)
+- [Anthropic Claude](https://claude.ai/code) (Opus 4.5- 4.8)
+- [OpenAI Codex](https://openai.com/index/openai-codex/) (GPT-5.1 - 6.2)
 
 Thanks to:
 - [GitSparTV](https://github.com/GitSparTV) for identifying the running count tracking issue.

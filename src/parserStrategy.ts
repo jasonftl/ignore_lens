@@ -2,6 +2,7 @@
 // Strategy pattern for parsing different ignore file types
 // Gitignore and vscodeignore have different whitespace handling rules
 
+import { posix } from 'node:path';
 import { LineType, ParsedLine, IgnoreFileType } from './types';
 
 /**
@@ -30,23 +31,8 @@ export class GitignoreParser implements ILineParser {
      * @returns ParsedLine with type and pattern information
      */
     public parseLine(line: string): ParsedLine {
-        // Handle trailing whitespace: trim unless escaped with backslash
-        // Gitignore allows \<space> or \<tab> to preserve trailing whitespace
-        // Multiple escaped spaces are supported: "file\ \ \ " becomes "file   "
-        let processedLine = line;
-
-        // Check for escaped trailing whitespace (one or more backslash+space/tab sequences at end)
-        // Pattern: (\\[ \t])+ at end of string
-        const trailingEscapeMatch = processedLine.match(/((?:\\[ \t])+)$/);
-        if (trailingEscapeMatch) {
-            // Extract the escaped sequence and remove backslashes, keeping whitespace
-            const escapedPart = trailingEscapeMatch[1];
-            const preservedWhitespace = escapedPart.replace(/\\/g, '');
-            processedLine = processedLine.slice(0, -escapedPart.length) + preservedWhitespace;
-        } else {
-            // Trim trailing spaces only (gitignore preserves trailing tabs)
-            processedLine = processedLine.replace(/ +$/, '');
-        }
+        // Leave escaped spaces for the matching engine.
+        const processedLine = line.replace(/(?<!\\)(?:\\\\)* +$/, suffix => suffix.trimEnd());
 
         // Check for blank lines (after trailing space processing)
         if (processedLine === '') {
@@ -266,14 +252,11 @@ export class DockerignoreParser implements ILineParser {
             patternPart = processedLine.substring(1);
         }
 
-        // Strip leading / (Docker disregards it - /pattern = pattern)
-        if (patternPart.startsWith('/')) {
-            patternPart = patternPart.substring(1);
+        patternPart = posix.normalize(patternPart.trim()).replace(/^\/+|\/+$/g, '');
+        const isDirectory = false;
+        if (!patternPart || patternPart === '.') {
+            return { type: 'blank', pattern: '', isNegation: false, isDirectory, rawText: line };
         }
-
-        // Check for directory pattern (trailing /)
-        // Do NOT strip trailing / - VscodeignoreMatcher.expandFolderPattern() needs it
-        const isDirectory = patternPart.endsWith('/');
 
         // Reconstruct the full pattern with negation prefix if needed
         const finalPattern = isNegation ? '!' + patternPart : patternPart;
@@ -293,13 +276,13 @@ export class DockerignoreParser implements ILineParser {
 /**
  * Parser for .cvsignore files.
  * Simple glob patterns with no # comments and no negation support.
- * A lone ! clears the ignore list (skipped for IgnoreLens).
+ * Whitespace separates patterns. A lone ! token clears the ignore list.
  * Patterns only match in the current directory (root-level only).
  */
 export class CvsignoreParser implements ILineParser {
     /**
      * Parses a single line from a cvsignore file.
-     * No comments (# is literal), no negation (! is literal or skip if alone).
+     * The # character and a ! within a filename are literal.
      *
      * @param line - The raw line text from the ignore file
      * @returns ParsedLine with type and pattern information
@@ -320,25 +303,12 @@ export class CvsignoreParser implements ILineParser {
             return result;
         }
 
-        // A lone ! clears the ignore list - treat as blank/skip for IgnoreLens
-        if (processedLine === '!') {
-            const result: ParsedLine = {
-                type: 'blank' as LineType,
-                pattern: '',
-                isNegation: false,
-                isDirectory: false,
-                rawText: line
-            };
-            return result;
-        }
-
-        // No # comments in cvsignore - # is treated as literal
-        // No negation - ! is treated as literal (part of the pattern)
         const isDirectory = processedLine.endsWith('/');
 
         const result: ParsedLine = {
             type: 'pattern' as LineType,
             pattern: processedLine,
+            tokens: processedLine.split(/\s+/),
             isNegation: false,  // Never treat as negation
             isDirectory: isDirectory,
             rawText: line
@@ -411,14 +381,12 @@ export class P4ignoreParser implements ILineParser {
 
         let patternPart = processedLine.substring(patternStart);
 
-        // Convert leading \ to / (P4 Windows root anchor); leading / is already
-        // the gitignore root anchor and needs no conversion.
-        if (patternPart.startsWith('\\')) {
-            patternPart = '/' + patternPart.substring(1);
+        // A leading escaped hash is a literal, even on Windows.
+        if (patternPart.startsWith('\\#')) {
+            patternPart = '\\' + patternPart.slice(1).replace(/\\/g, '/');
+        } else {
+            patternPart = patternPart.replace(/\\/g, '/');
         }
-
-        // Convert any remaining backslashes in paths to forward slashes
-        patternPart = patternPart.replace(/\\/g, '/');
 
         const finalPattern = isNegation ? '!' + patternPart : patternPart;
         const isDirectory = patternPart.endsWith('/');
@@ -435,32 +403,27 @@ export class P4ignoreParser implements ILineParser {
 
 }
 
-/**
- * Factory function to get the appropriate parser for a file type.
- * All gitignore-style files (see supportedFiles.ts) use the same parser.
- *
- * @param fileType - The semantic type of ignore file
- * @returns Parser instance for that file type
- */
 export function getParser(fileType: IgnoreFileType): ILineParser {
-    if (fileType === 'vscodeignore') {
-        return new VscodeignoreParser();
+    switch (fileType) {
+        case 'vscodeignore': return new VscodeignoreParser();
+        case 'helmignore': {
+            const parser = new VscodeignoreParser();
+            return {
+                parseLine(line) {
+                    const rule = parser.parseLine(line);
+                    if (rule.type === 'pattern' && rule.pattern.includes('**')) {
+                        rule.warning = 'Helm does not support the ** wildcard.';
+                    }
+                    return rule;
+                }
+            };
+        }
+        case 'glob-no-negation':
+        case 'bazelignore': return new GlobNoNegationParser();
+        case 'tfignore':
+        case 'p4ignore': return new P4ignoreParser();
+        case 'dockerignore': return new DockerignoreParser();
+        case 'cvsignore': return new CvsignoreParser();
+        default: return new GitignoreParser();
     }
-    if (fileType === 'glob-no-negation') {
-        return new GlobNoNegationParser();
-    }
-    if (fileType === 'tfignore') {
-        return new P4ignoreParser();
-    }
-    if (fileType === 'dockerignore') {
-        return new DockerignoreParser();
-    }
-    if (fileType === 'cvsignore') {
-        return new CvsignoreParser();
-    }
-    if (fileType === 'p4ignore') {
-        return new P4ignoreParser();
-    }
-    // All gitignore-style files use the same parser
-    return new GitignoreParser();
 }

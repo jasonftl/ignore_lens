@@ -12,11 +12,39 @@ interface CooperativeProvider {
         matcher: IPatternMatcher,
         pattern: string,
         files: string[],
-        version: number
+        isCurrent: () => boolean
     ): Promise<string[] | undefined>;
 }
 
 suite('DecorationProvider Test Suite', () => {
+    test('warns about unsupported Helm syntax and evaluates CVS tokens and resets', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const scanner = new WorkspaceScanner(async () => ['app.ts', 'file10.txt', 'sub/cache.tmp']
+            .map(file => vscode.Uri.joinPath(folder.uri, file)));
+        const provider = new DecorationProvider(scanner);
+        const editor = (name: string, lines: string[]) => ({
+            document: {
+                uri: vscode.Uri.joinPath(folder.uri, name), languageId: 'ignore', lineCount: lines.length,
+                lineAt: (index: number) => ({ text: lines[index], range: new vscode.Range(index, 0, index, lines[index].length) })
+            },
+            setDecorations() { /* Read the computed decorations from the cache. */ }
+        } as unknown as vscode.TextEditor);
+        const helm = editor('.helmignore', ['**/*.tmp']);
+        const cvs = editor('.cvsignore', ['app.ts file10.txt', '! app.ts', '!']);
+        try {
+            await Promise.all([provider.updateDecorations(helm), provider.updateDecorations(cvs)]);
+            assert.match(decorationCache.get(helm.document.uri.toString())?.warnings[0]?.message ?? '', /Helm does not support/);
+            assert.deepStrictEqual(decorationCache.get(helm.document.uri.toString())?.lineData, []);
+            assert.deepStrictEqual(decorationCache.get(cvs.document.uri.toString())?.lineData.map(row => [row.col1, row.setSize]),
+                [['+2', 2], ['−1', 1], ['−1', 0]]);
+        } finally {
+            provider.dispose();
+            scanner.dispose();
+            for (const view of [helm, cvs]) decorationCache.delete(view.document.uri.toString());
+        }
+    });
+
     test('refreshes the file scan on tab return and shows a loop warning', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
@@ -66,7 +94,7 @@ suite('DecorationProvider Test Suite', () => {
 
         try {
             const matches = await internals.findMatchesCooperatively(
-                new VscodeignoreMatcher(), '*.txt', files, internals.updateVersion
+                new VscodeignoreMatcher(), '*.txt', files, () => true
             );
             assert.strictEqual(matches?.length, files.length);
         } finally {
@@ -81,17 +109,17 @@ suite('DecorationProvider Test Suite', () => {
         const internals = provider as unknown as CooperativeProvider;
         const files = Array.from({ length: 10001 }, (_, index) => String(index));
         let calls = 0;
+        let current = true;
         const matcher: IPatternMatcher = {
             findMatches(pattern, chunk) {
                 calls = calls + 1;
-                internals.updateVersion = internals.updateVersion + 1;
+                current = false;
                 return chunk;
             }
         };
 
         try {
-            const version = internals.updateVersion;
-            const matches = await internals.findMatchesCooperatively(matcher, '*', files, version);
+            const matches = await internals.findMatchesCooperatively(matcher, '*', files, () => current);
             assert.strictEqual(matches, undefined);
             assert.strictEqual(calls, 1);
         } finally {

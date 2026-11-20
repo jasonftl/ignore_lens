@@ -6,6 +6,67 @@ import * as path from 'path';
 import { WorkspaceScanner } from '../../workspaceScanner';
 
 suite('WorkspaceScanner Test Suite', () => {
+    test('a late create failure cannot remove a recreated file', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const uri = vscode.Uri.joinPath(folder.uri, 'recreated.ts');
+        let failFirst!: (error: Error) => void;
+        let first = true;
+        const scanner = new WorkspaceScanner(async () => [], () => {
+            if (!first) return Promise.resolve({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: 0 });
+            first = false;
+            return new Promise((_resolve, reject) => { failFirst = reject; });
+        });
+        try {
+            await scanner.getFilesInFolder(folder);
+            const pending = scanner.addPath(uri);
+            assert.ok(scanner.removePath(uri));
+            assert.strictEqual(await scanner.addPath(uri), 'file');
+            failFirst(new Error('original file was deleted'));
+            assert.strictEqual(await pending, undefined);
+            assert.ok((await scanner.getFilesInFolder(folder)).files.has('recreated.ts'));
+        } finally {
+            scanner.dispose();
+        }
+    });
+
+    test('removes a cached link warning on deletion and deletes known files directly', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const link = vscode.Uri.joinPath(folder.uri, 'gone-link');
+        const file = vscode.Uri.joinPath(folder.uri, 'ordinary.txt');
+        const scanner = new WorkspaceScanner(async () => [file]);
+        try {
+            const cached = await scanner.getFilesInFolder(folder);
+            cached.warnings.push({ path: 'gone-link', message: 'Target unavailable' });
+            assert.ok(scanner.removePath(link));
+            assert.deepStrictEqual(cached.warnings, []);
+            cached.files[Symbol.iterator] = () => assert.fail('A known file can be deleted without scanning the set.');
+            assert.ok(scanner.removePath(file));
+            assert.strictEqual(cached.files.size, 0);
+        } finally {
+            scanner.dispose();
+        }
+    });
+
+    test('falls back when the symlink time budget expires at the root', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const scanner = new WorkspaceScanner(async () => assert.fail('Budget exhaustion must skip VS Code search.'));
+        const descriptor = Object.getOwnPropertyDescriptor(performance, 'now');
+        let time = 0;
+        Object.defineProperty(performance, 'now', { configurable: true, value: () => time += 300 });
+        try {
+            const scan = await scanner.getFilesInFolder(folder);
+            assert.strictEqual(scan.fallback, 'Symlink check did not finish');
+            assert.ok(scan.files.has('ignored/file.txt'));
+        } finally {
+            if (descriptor) Object.defineProperty(performance, 'now', descriptor);
+            else Reflect.deleteProperty(performance, 'now');
+            scanner.dispose();
+        }
+    });
+
     test('detects a symlink loop before searching and skips linked targets', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);

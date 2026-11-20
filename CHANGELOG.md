@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancel scans when leaving ignore files, changing workspace folders, or disabling Ignore Lens.
 - Start a fresh scan when returning to an ignore-file tab, with previous counts visible while the scan runs.
 - Release cached gitignore match results after each batch of files.
+- Apply Git's parent-directory and case rules when counting exceptions, and preserve escaped trailing spaces and character classes.
+- Apply the matching rules for Perforce, VS Code packaging, npm, Google Cloud, Docker, Bazel, Helm, and CVS examples.
+- Refresh visible ignore editors after file and setting changes, preserve newer file events, and keep cached warnings in sync.
+- Bound symlink pre-scans, avoid walking the cache for individual file deletions, and show scan errors and stale counts with the correct output and theme settings.
+- Keep release packaging rules with the source, and isolate each extension test run.
 
 ## [1.1.1] - 19/09/2026
 

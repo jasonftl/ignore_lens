@@ -1,6 +1,6 @@
 // Date: 24/04/2026
 // Strategy pattern for pattern matching in different ignore file types
-// Gitignore uses fnmatch with basename matching; vscodeignore uses minimatch without
+// Git ignore patterns match basenames. VSCE matches paths from the package root.
 
 import ignore from 'ignore';
 import { Minimatch } from 'minimatch';
@@ -30,206 +30,37 @@ export interface IPatternMatcher {
     findMatches(pattern: string, files: string[]): string[];
 }
 
-/**
- * Checks if a pattern contains unescaped character classes (e.g., [abc], [a-z])
- * but no wildcards (* or **).
- * The 'ignore' package doesn't match these patterns correctly without wildcards.
- *
- * @param pattern - The gitignore pattern to check
- * @returns true if pattern needs minimatch fallback
- */
-function needsMinimatchFallback(pattern: string): boolean {
-    // Remove negation prefix if present (but not escaped \!)
-    const isNegation = pattern.startsWith('!') && !pattern.startsWith('\\!');
-    const cleanPattern = isNegation ? pattern.substring(1) : pattern;
-
-    // Check for negated character classes [^...] or [!...]
-    // These MUST use minimatch because the ignore package inverts them
-    const hasNegatedCharClass = /(?<!\\)\[[\^!]/.test(cleanPattern);
-    if (hasNegatedCharClass) {
-        return true;
-    }
-
-    // For non-negated patterns with unescaped wildcards, ignore package handles it fine
-    // Must check for unescaped * (not preceded by \)
-    const hasUnescapedWildcard = /(?<!\\)\*/.test(cleanPattern);
-    if (hasUnescapedWildcard) {
-        return false;
-    }
-
-    // Check for unescaped character classes [...]
-    // Must find [ that isn't preceded by \, followed by ], also not preceded by \
-    const hasCharacterClass = /(?<!\\)\[.*?(?<!\\)\]/.test(cleanPattern);
-
-    return hasCharacterClass;
-}
-
-/**
- * Matches files using minimatch for character class patterns.
- * Uses matchBase option so patterns match anywhere in the path (gitignore behaviour).
- * Handles anchored patterns (leading /) by matching from the root.
- *
- * ISSUE-M025 optimisation: the pattern is compiled once into a Minimatch instance
- * (or a pair of instances for the non-anchored matchBase + full-path case) before
- * iterating files, avoiding one regex compilation per file.
- *
- * @param pattern - The gitignore pattern (without negation prefix)
- * @param files - Array of file paths to match against
- * @returns Array of matching file paths
- */
-function matchWithMinimatchBasename(pattern: string, files: string[]): string[] {
-    const matchingFiles: string[] = [];
-
-    // ISSUE-M009 fix: Handle anchored patterns (leading /)
-    // Git treats /pattern as matching from the root
-    const isAnchored = pattern.startsWith('/');
-    const cleanPattern = isAnchored ? pattern.substring(1) : pattern;
-
-    // ISSUE-M012 fix: Check if anchored pattern contains subpath
-    // /[ab].txt should only match root-level files
-    // /[ab]/file.txt should match a/file.txt or b/file.txt
-    const anchoredHasSubpath = isAnchored && cleanPattern.includes('/');
-
-    // Compile once, reuse for every file (ISSUE-M025)
-    // ISSUE-M018 fix: Use { dot: true } to match dotfiles
-    if (isAnchored && !anchoredHasSubpath) {
-        // Simple anchored pattern: only test root-level files against cleaned pattern
-        const rootMatcher = new Minimatch(cleanPattern, { dot: true });
-        for (const file of files) {
-            if (file.includes('/')) {
-                continue;  // Skip non-root files for simple anchored patterns
-            }
-            if (rootMatcher.match(file)) {
-                matchingFiles.push(file);
-            }
-        }
-    } else if (isAnchored) {
-        // Anchored with subpath: match against full path
-        const fullMatcher = new Minimatch(cleanPattern, { dot: true });
-        for (const file of files) {
-            if (fullMatcher.match(file)) {
-                matchingFiles.push(file);
-            }
-        }
-    } else {
-        // Non-anchored: combine basename and full-path matching
-        const baseMatcher = new Minimatch(cleanPattern, { matchBase: true, dot: true });
-        const fullMatcher = new Minimatch(cleanPattern, { dot: true });
-        for (const file of files) {
-            if (baseMatcher.match(file) || fullMatcher.match(file)) {
-                matchingFiles.push(file);
-            }
-        }
-    }
-
-    return matchingFiles;
-}
-
-/**
- * Matcher for .gitignore patterns.
- * Uses the 'ignore' package to test patterns against file paths.
- * Falls back to minimatch for character class patterns without wildcards.
- */
+/** Git uses the same rules to match files and their parent directories. */
 export class GitignoreMatcher implements IPatternMatcher {
-    /**
-     * Finds all files that match the given gitignore pattern.
-     *
-     * @param pattern - The gitignore pattern to match against
-     * @param files - Array of file paths (relative, with forward slashes)
-     * @returns Matching file paths
-     */
+    constructor(private readonly ignoreCase = false) {}
+
     public findMatches(pattern: string, files: string[]): string[] {
-        // Check for negation (! prefix) but not escaped \! which is a literal !
-        const isNegation = pattern.startsWith('!') && !pattern.startsWith('\\!');
-        const cleanPattern = isNegation ? pattern.substring(1) : pattern;
-
-        let matchingFiles: string[] = [];
-
-        // Check if this pattern needs minimatch fallback (character class without wildcards)
-        if (needsMinimatchFallback(pattern)) {
-            // Use minimatch for character class patterns like [a].ts
-            matchingFiles = matchWithMinimatchBasename(cleanPattern, files);
-        } else {
-            // The ignore package caches results for every path it tests.
-            const ig = ignore().add(cleanPattern);
-
-            for (const file of files) {
-                // The ignores() method returns true if the file matches the pattern
-                const matches = ig.ignores(file);
-                if (matches) {
-                    matchingFiles.push(file);
-                }
-            }
-        }
-
-        return matchingFiles;
+        const positive = pattern.startsWith('!') ? pattern.slice(1).replace(/^[!#]/, '\\$&') : pattern;
+        const rules = ignore({ ignoreCase: this.ignoreCase }).add(positive);
+        return files.filter(file => rules.ignores(file));
     }
-
 }
 
 /**
  * Matcher for .vscodeignore patterns.
  * Uses pure minimatch with { dot: true }.
  * NO recursive basename matching - *.log only matches root level.
- * Auto-expands folder/ to folder/** before matching.
+ * Tests possible folder names with a recursive suffix as VSCE does.
  */
 export class VscodeignoreMatcher implements IPatternMatcher {
     private readonly patternCache = new Map<string, Minimatch>();
 
-    /**
-     * Expands a folder pattern to include all contents.
-     * vsce does: patterns like "folder/" become "folder/**"
-     *
-     * @param pattern - The original pattern
-     * @returns Expanded pattern or original if no expansion needed
-     */
-    private expandFolderPattern(pattern: string): string {
-        // If pattern ends with /, expand to /**
-        if (pattern.endsWith('/')) {
-            return pattern + '**';
-        }
-        return pattern;
+    public findMatches(pattern: string, files: string[]): string[] {
+        const positive = pattern.startsWith('!') ? pattern.slice(1) : pattern;
+        const raw = this.compile(positive);
+        const folder = /(^|\/)[^/]*\*[^/]*$/.test(positive)
+            ? undefined
+            : this.compile(positive.endsWith('/') ? positive + '**' : positive + '/**');
+        return files.filter(file => raw.match(file) || folder?.match(file));
     }
 
-    /**
-     * Finds all files that match the given vscodeignore pattern.
-     * Uses minimatch without matchBase - patterns are strict.
-     *
-     * ISSUE-M025 optimisation: compile the pattern into a Minimatch instance once
-     * and reuse it across every file in the workspace.
-     *
-     * @param pattern - The vscodeignore pattern to match against
-     * @param files - Array of file paths (relative, with forward slashes)
-     * @returns Matching file paths
-     */
-    public findMatches(pattern: string, files: string[]): string[] {
-        // Check for negation (! prefix)
-        const isNegation = pattern.startsWith('!');
-        let cleanPattern = isNegation ? pattern.substring(1) : pattern;
-
-        // Auto-expand folder patterns: folder/ becomes folder/**
-        cleanPattern = this.expandFolderPattern(cleanPattern);
-
-        const matchingFiles: string[] = [];
-
-        // Compile once, reuse for every file (ISSUE-M025)
-        // NO matchBase option - *.log only matches root level
-        // Use { dot: true } to match dotfiles
-        // Use { nonegate: true } so literal ! in patterns (e.g. from bzrignore) isn't treated as negation
-        // (We handle negation ourselves by stripping the ! prefix above)
-        const matcher = getCompiledPattern(
-            this.patternCache,
-            cleanPattern,
-            () => new Minimatch(cleanPattern, { dot: true, nonegate: true })
-        );
-
-        for (const file of files) {
-            if (matcher.match(file)) {
-                matchingFiles.push(file);
-            }
-        }
-
-        return matchingFiles;
+    private compile(pattern: string): Minimatch {
+        return getCompiledPattern(this.patternCache, pattern, () => new Minimatch(pattern, { dot: true, nonegate: true }));
     }
 
 }
@@ -298,23 +129,103 @@ export class GlobNoNegationMatcher implements IPatternMatcher {
 
 }
 
-/**
- * Factory function to get the appropriate matcher for a file type.
- * All gitignore-style files (see supportedFiles.ts) use the same matcher.
- *
- * @param fileType - The semantic type of ignore file
- * @returns Matcher instance for that file type
- */
-export function getMatcher(fileType: IgnoreFileType): IPatternMatcher {
-    if (fileType === 'glob-no-negation' || fileType === 'cvsignore') {
-        // These formats treat ! as literal, never as negation
-        return new GlobNoNegationMatcher();
+/** Docker matches a rule against the path and each parent directory. */
+class DockerignoreMatcher implements IPatternMatcher {
+    private readonly patternCache = new Map<string, Minimatch>();
+
+    public findMatches(pattern: string, files: string[]): string[] {
+        const positive = pattern.startsWith('!') ? pattern.slice(1) : pattern;
+        const matcher = getCompiledPattern(this.patternCache, positive,
+            () => new Minimatch(positive, { dot: true, nonegate: true, nocomment: true, nobrace: true, noext: true }));
+        return files.filter(file => matchesPathOrParent(file, candidate => matcher.match(candidate)));
     }
-    if (fileType === 'vscodeignore' || fileType === 'dockerignore') {
-        // These use minimatch-style matching with ! as negation
-        return new VscodeignoreMatcher();
+}
+
+function matchesPathOrParent(file: string, matches: (candidate: string) => boolean): boolean {
+    let candidate = file;
+    while (candidate) {
+        if (matches(candidate)) return true;
+        const slash = candidate.lastIndexOf('/');
+        if (slash === -1) return false;
+        candidate = candidate.slice(0, slash);
     }
-    // gitignore-style, tfignore, and p4ignore files use basename matching
-    // (P4ignoreParser normalises anchors to gitignore form before reaching this matcher)
-    return new GitignoreMatcher();
+    return false;
+}
+
+class P4ignoreMatcher extends GitignoreMatcher {
+    private readonly recursivePatterns = new Map<string, { tokens: string[]; anchored: boolean; directory: boolean }>();
+
+    public findMatches(pattern: string, files: string[]): string[] {
+        if (!pattern.includes('**')) return super.findMatches(pattern, files);
+
+        const rule = getCompiledPattern(this.recursivePatterns, pattern, () => {
+            const positive = pattern.replace(/^!/, '').toLowerCase();
+            const body = positive.replace(/^\//, '').replace(/\/$/, '').replace(/^\\#/, '#');
+            return {
+                tokens: body.match(/\*{2,}\/|\*{2,}|\*|[^*]/g) ?? [],
+                anchored: positive.startsWith('/') || body.includes('/'),
+                directory: positive.endsWith('/')
+            };
+        });
+        return files.filter(file => this.matchesRecursive(file.toLowerCase(), rule));
+    }
+
+    private matchesRecursive(file: string, rule: { tokens: string[]; anchored: boolean; directory: boolean }): boolean {
+        let positions = new Uint8Array(file.length + 1);
+        let next = new Uint8Array(file.length + 1);
+        positions[0] = 1;
+        if (!rule.anchored) {
+            for (let i = 0; i < file.length; i++) {
+                if (file[i] === '/') positions[i + 1] = 1;
+            }
+        }
+
+        // Track reachable offsets so several recursive stars cannot cause backtracking.
+        for (const token of rule.tokens) {
+            if (token.startsWith('**') && token.endsWith('/')) {
+                let reachable = 0;
+                for (let i = 0; i <= file.length; i++) {
+                    next[i] = positions[i] || (file[i - 1] === '/' ? reachable : 0);
+                    reachable ||= positions[i];
+                }
+            } else if (token.startsWith('*')) {
+                next[0] = positions[0];
+                for (let i = 1; i <= file.length; i++) {
+                    next[i] = positions[i] || (token !== '*' || file[i - 1] !== '/' ? next[i - 1] : 0);
+                }
+            } else {
+                next[0] = 0;
+                for (let i = 1; i <= file.length; i++) {
+                    next[i] = token === file[i - 1] ? positions[i - 1] : 0;
+                }
+            }
+            [positions, next] = [next, positions];
+        }
+
+        if (!rule.directory && positions[file.length]) return true;
+        for (let i = 0; i < file.length; i++) {
+            if (positions[i] && file[i] === '/') return true;
+        }
+        return false;
+    }
+}
+
+class BazelignoreMatcher implements IPatternMatcher {
+    public findMatches(pattern: string, files: string[]): string[] {
+        const prefix = pattern.replace(/\/+$/, '') + '/';
+        return files.filter(file => file.startsWith(prefix));
+    }
+}
+
+export function getMatcher(fileType: IgnoreFileType, ignoreCase = false): IPatternMatcher {
+    switch (fileType) {
+        case 'glob-no-negation':
+        case 'cvsignore': return new GlobNoNegationMatcher();
+        case 'vscodeignore': return new VscodeignoreMatcher();
+        case 'dockerignore': return new DockerignoreMatcher();
+        case 'p4ignore': return new P4ignoreMatcher(true);
+        case 'bazelignore': return new BazelignoreMatcher();
+        case 'tfignore': return new GitignoreMatcher(true);
+        default: return new GitignoreMatcher(ignoreCase);
+    }
 }

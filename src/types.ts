@@ -10,12 +10,12 @@
  * - tfignore: Team Foundation (basename matching like gitignore, but \ anchors to root, no blocking)
  * - dockerignore: Docker ignore (minimatch-style, but strips leading/trailing slashes, no blocking)
  * - cvsignore: CVS ignore (simple glob, root only, no # comments, no negation)
- * - p4ignore: Perforce ignore (gitignore-style matching with / or \ as root anchor, first-match-wins)
+ * - p4ignore: Perforce ignore (gitignore-style matching with / or \ as root anchor, later matches override earlier matches)
  *
  * Note: Many ignore formats (e.g. .prettierignore, .eslintignore) follow gitignore semantics.
  * See supportedFiles.ts for the full list of supported files and their semantic types.
  */
-export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'glob-no-negation' | 'tfignore' | 'dockerignore' | 'cvsignore' | 'p4ignore';
+export type IgnoreFileType = 'gitignore' | 'vscodeignore' | 'glob-no-negation' | 'tfignore' | 'dockerignore' | 'cvsignore' | 'p4ignore' | 'npmignore' | 'gcloudignore' | 'bazelignore' | 'helmignore';
 
 /**
  * The type of line in an ignore file.
@@ -41,6 +41,8 @@ export interface ParsedLine {
     isDirectory: boolean;
     /** The original line text */
     rawText: string;
+    tokens?: string[];
+    warning?: string;
 }
 
 /**

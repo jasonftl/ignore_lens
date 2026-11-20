@@ -6,7 +6,6 @@ import { opendir, realpath, stat } from 'fs/promises';
 import * as path from 'path';
 import { log, logTiming } from './logger';
 
-const MINIMUM_CHECK_DEPTH = 16;
 const LINK_CHECK_BUDGET_MS = 250;
 const LINKED_ENTRY_BUDGET = 8192;
 
@@ -72,9 +71,9 @@ async function checkSymlinks(root: string, token: vscode.CancellationToken, warn
     const started = performance.now();
     let level: Directory[] = [{ absolutePath: root, prefix: '' }];
     let linkedEntries = 0;
-    for (let depth = 1; level.length; depth++) {
+    while (level.length) {
         const next: Directory[] = [];
-        const pastBudget = () => depth > MINIMUM_CHECK_DEPTH && performance.now() - started >= LINK_CHECK_BUDGET_MS;
+        const pastBudget = () => performance.now() - started >= LINK_CHECK_BUDGET_MS;
         for (const directory of level) {
             checkCancellation(token);
             if (pastBudget()) {
@@ -170,18 +169,22 @@ async function scanWithoutLinks(
  */
 export class WorkspaceScanner implements vscode.Disposable {
     private readonly fileCache = new Map<string, WorkspaceFiles>();
+    private readonly pendingCreates = new Map<string, symbol>();
     private readonly scans = new Map<string, WorkspaceScan>();
     private readonly workspaceFolderDisposable: vscode.Disposable;
 
-    constructor(private readonly findFiles = vscode.workspace.findFiles) {
-        this.workspaceFolderDisposable = vscode.workspace.onDidChangeWorkspaceFolders(() => this.clear());
+    constructor(
+        private readonly findFiles = vscode.workspace.findFiles,
+        private readonly statPath = vscode.workspace.fs.stat
+    ) {
+        this.workspaceFolderDisposable = vscode.workspace.onDidChangeWorkspaceFolders(() => this.invalidate());
     }
 
     public async getFilesInFolder(
         folder: vscode.WorkspaceFolder, fresh = false, report?: (message: string) => void
     ): Promise<WorkspaceFiles> {
         const folderKey = folder.uri.toString();
-        if (fresh) this.invalidateFolder(folderKey);
+        if (fresh && !this.scans.has(folderKey)) this.fileCache.delete(folderKey);
         const cachedFiles = this.fileCache.get(folderKey);
         if (cachedFiles) {
             return cachedFiles;
@@ -214,48 +217,50 @@ export class WorkspaceScanner implements vscode.Disposable {
         scan?.cancellation.cancel();
     }
 
-    public cancelScans(keepFolder?: vscode.WorkspaceFolder): void {
-        const keepKey = keepFolder?.uri.toString();
+    public cancelScans(keepFolders: readonly vscode.WorkspaceFolder[] = []): void {
+        const keepKeys = new Set(keepFolders.map(folder => folder.uri.toString()));
         for (const [folderKey, scan] of this.scans) {
-            if (folderKey !== keepKey) {
+            if (!keepKeys.has(folderKey)) {
                 this.scans.delete(folderKey);
                 scan.cancellation.cancel();
             }
         }
     }
 
-    /** Adds a newly created path to its workspace cache. */
-    public async addPath(uri: vscode.Uri): Promise<boolean> {
+    /** Adds a new file or invalidates the folder for a new directory or link. */
+    public async addPath(uri: vscode.Uri): Promise<'file' | 'rescan' | undefined> {
         const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!folder) {
-            return false;
-        }
+        if (!folder || !this.isTracking(folder)) return;
 
-        if (!this.isTracking(folder)) {
-            return false;
-        }
-
-        // Record the event before the asynchronous stat so a later delete stays authoritative.
-        this.recordChange(folder, uri, true);
-        let stat: vscode.FileStat;
+        const key = uri.toString();
+        const event = Symbol();
+        this.pendingCreates.set(key, event);
         try {
-            stat = await vscode.workspace.fs.stat(uri);
+            const stat = await this.statPath(uri);
+            if (this.pendingCreates.get(key) !== event) return;
+
+            if ((stat.type & (vscode.FileType.Directory | vscode.FileType.SymbolicLink)) !== 0) {
+                this.invalidateFolder(folder.uri.toString());
+                return 'rescan';
+            }
+
+            this.recordChange(folder, uri, true);
+            return 'file';
         } catch (error) {
-            this.removePath(uri);
+            if (this.pendingCreates.get(key) !== event) return;
+            this.recordChange(folder, uri, false);
             throw error;
+        } finally {
+            if (this.pendingCreates.get(key) === event) this.pendingCreates.delete(key);
         }
-
-        if ((stat.type & (vscode.FileType.Directory | vscode.FileType.SymbolicLink)) !== 0) {
-            // A directory or link can introduce paths that were not in the previous scan.
-            this.invalidateFolder(folder.uri.toString());
-            return true;
-        }
-
-        return true;
     }
 
     /** Removes a deleted file or directory from its workspace cache. */
     public removePath(uri: vscode.Uri): boolean {
+        const key = uri.toString();
+        for (const pending of this.pendingCreates.keys()) {
+            if (pending === key || pending.startsWith(key + '/')) this.pendingCreates.delete(pending);
+        }
         const folder = vscode.workspace.getWorkspaceFolder(uri);
         if (!folder) {
             return false;
@@ -287,7 +292,7 @@ export class WorkspaceScanner implements vscode.Disposable {
                     change.path === warning.path || change.path.startsWith(warning.path + '/'))) continue;
                 result.files.add(change.path);
             } else {
-                this.removeFromSet(result.files, change.path);
+                this.removeFromResult(result, change.path);
             }
         }
         this.fileCache.set(folderKey, result);
@@ -337,7 +342,7 @@ export class WorkspaceScanner implements vscode.Disposable {
             } else if (exists) {
                 cachedFiles.files.add(relativePath);
             } else {
-                this.removeFromSet(cachedFiles.files, relativePath);
+                this.removeFromResult(cachedFiles, relativePath);
             }
             return;
         }
@@ -354,18 +359,20 @@ export class WorkspaceScanner implements vscode.Disposable {
         return this.fileCache.has(folderKey) || this.scans.has(folderKey);
     }
 
-    private removeFromSet(files: Set<string>, removedPath: string): void {
+    private removeFromResult(result: WorkspaceFiles, removedPath: string): void {
         const prefix = removedPath + '/';
-        for (const file of files) {
-            if (file === removedPath || file.startsWith(prefix)) {
-                files.delete(file);
+        if (!result.files.delete(removedPath)) {
+            for (const file of result.files) {
+                if (file.startsWith(prefix)) result.files.delete(file);
             }
         }
+        result.warnings = result.warnings.filter(warning => warning.path !== removedPath && !warning.path.startsWith(prefix));
     }
 
-    private clear(): void {
+    public invalidate(): void {
         this.cancelScans();
         this.fileCache.clear();
+        this.pendingCreates.clear();
     }
 
     /**
@@ -373,6 +380,6 @@ export class WorkspaceScanner implements vscode.Disposable {
      */
     public dispose(): void {
         this.workspaceFolderDisposable.dispose();
-        this.clear();
+        this.invalidate();
     }
 }

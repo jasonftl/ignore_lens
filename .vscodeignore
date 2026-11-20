@@ -1,0 +1,10 @@
+# Files required by the published extension. VSCE selects production dependencies.
+**
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!images/icon.png
+!images/screenshot.png
+!out/*.js
+!node_modules/**
