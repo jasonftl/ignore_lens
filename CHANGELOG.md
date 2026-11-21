@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 20/11/2026
+
+### Added
+- Apply `.gcloudignore` include directives in order and refresh their counts when the included file changes (ISSUE-M045).
+
 ### Changed
 - Update runtime and development dependencies.
 
@@ -20,10 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Match npm and Google Cloud basenames and root anchors. Apply npm's case, directory traversal, and repeated negation rules (ISSUE-M038).
 - Preserve spaces when normalising Bazel's literal directory paths, and warn about invalid Helm ignore patterns (ISSUE-M040, ISSUE-M041).
 - Count paths excluded by Helm's `!` rules without restoring earlier exclusions (ISSUE-M044).
-- Apply `.gcloudignore` include directives in order and refresh their counts when the included file changes (ISSUE-M045).
 - Refresh visible ignore editors after file and setting changes, preserve newer file events, and keep cached warnings in sync (ISSUE-M030, ISSUE-M031, ISSUE-M032, ISSUE-M034, ISSUE-L026).
 - Bound symlink pre-scans, avoid walking cached paths and pending creates for known-file deletions, and show scan errors and stale counts with the correct output and theme settings (ISSUE-M033, ISSUE-M043, ISSUE-L025, ISSUE-L027).
 - Keep release packaging rules with the source, and isolate each extension test run (ISSUE-L028, ISSUE-L029).
+- Repair broken README links and update moved documentation links.
 
 ## [1.1.1] - 19/09/2026
 
