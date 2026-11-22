@@ -125,9 +125,11 @@ suite('DecorationProvider Test Suite', () => {
             await symlink(folder.uri.fsPath, loop.fsPath, process.platform === 'win32' ? 'junction' : 'dir');
             await scanner.addPath(loop);
             await provider.updateDecorations(editor);
-            const marker = applied.find(decoration => decoration.renderOptions?.after?.contentText?.includes('\u26a0'));
-            assert.ok(marker?.hoverMessage);
-            assert.match((marker.hoverMessage as vscode.MarkdownString).value, /Symlink.*loop/);
+            const marker = applied.find(d => d.renderOptions?.after?.contentText?.includes('\u26a0'));
+            assert.ok(marker);
+            const count = applied.find(d => d.range.isEqual(marker.range) && d.hoverMessage);
+            assert.match(count?.renderOptions?.after?.contentText ?? '', /^\+\d+.*\(\d+\)/);
+            assert.match((count?.hoverMessage as vscode.MarkdownString).value, /Symlink.*loop/);
             assert.match(decorationCache.get(document.uri.toString())?.warnings[0]?.message ?? '', /Symlink loop/);
         } finally {
             provider.dispose();
@@ -144,7 +146,7 @@ suite('DecorationProvider Test Suite', () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
         const uri = vscode.Uri.joinPath(folder.uri, '.gitignore');
-        const loop = vscode.Uri.joinPath(folder.uri, 'watched-loop');
+        const loop = vscode.Uri.joinPath(folder.uri, 'ignored', 'watched-loop');
         const waitForLoop = async (expected: boolean) => {
             for (let attempt = 0; attempt < 100; attempt++) {
                 const data = decorationCache.get(uri.toString());
@@ -166,6 +168,64 @@ suite('DecorationProvider Test Suite', () => {
                 if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
             });
             await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+        }
+    });
+
+    test('marks only rules matching a local loop and uses the count colour when visible', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const uri = vscode.Uri.joinPath(folder.uri, 'ignored', '.gitignore');
+        const lines = ['# Outputs', 'ok/', 'logs/', 'logs/', 'missing/', 'elsewhere/', 'logs/loop/'];
+        const scanner = new WorkspaceScanner();
+        scanner.getFilesInFolder = async () => ({
+            files: new Set(['ignored/logs/a.txt', 'ignored/ok/b.txt']),
+            warnings: [
+                { path: 'ignored/logs/loop', message: 'Symlink loop' },
+                { path: 'ignored/missing', message: 'Target unavailable' },
+                { path: 'elsewhere/loop', message: 'Symlink loop' }
+            ]
+        });
+        const provider = new DecorationProvider(scanner);
+        const applied = new Map<string, vscode.DecorationOptions[]>();
+        const editor = {
+            document: {
+                uri, languageId: 'ignore', lineCount: lines.length,
+                lineAt: (index: number) => ({ text: lines[index], range: new vscode.Range(index, 0, index, lines[index].length) })
+            },
+            setDecorations(type: vscode.TextEditorDecorationType, decorations: vscode.DecorationOptions[]) {
+                applied.set(type.key, decorations);
+            }
+        } as unknown as vscode.TextEditor;
+        const markers = () => [...applied.values()].flat().filter(d => [d.renderOptions?.before, d.renderOptions?.after].some(part => part?.contentText?.includes('\u26a0')));
+        const config = vscode.workspace.getConfiguration('ignorelens');
+        const original = config.inspect<boolean>('showMatchCount')?.workspaceValue;
+        try {
+            await provider.updateDecorations(editor);
+            assert.deepStrictEqual(markers().map(d => d.range.start.line), [2, 3, 6]);
+            const marker = markers()[1];
+            const sameRange = [...applied.values()].flat().filter(d => d.range.isEqual(marker.range) && d.hoverMessage);
+            assert.strictEqual(sameRange.length, 1);
+            assert.ok(marker.range.isEqual(editor.document.lineAt(3).range));
+            assert.deepStrictEqual(markers()[0].renderOptions!.after!.color, new vscode.ThemeColor('ignorelens.matchCountForeground'));
+            assert.deepStrictEqual(marker.renderOptions!.after!.color, new vscode.ThemeColor('ignorelens.negationForeground'));
+            assert.deepStrictEqual(marker.renderOptions!.after!.color, sameRange[0].renderOptions!.after!.color);
+            assert.deepStrictEqual(markers()[2].renderOptions!.after!.color, new vscode.ThemeColor('ignorelens.noMatchForeground'));
+            assert.match(sameRange[0].renderOptions!.after!.contentText!, /^\+0\s+\(2\)\s+≡1$/);
+            assert.match((sameRange[0].hoverMessage as vscode.MarkdownString).value, /logs\/loop/);
+
+            await config.update('showMatchCount', false, vscode.ConfigurationTarget.Workspace);
+            provider.onConfigurationChanged();
+            applied.clear();
+            await provider.updateDecorations(editor);
+            assert.deepStrictEqual(markers().map(d => [d.range.start.line, d.renderOptions!.after!.contentText!.trim()]),
+                [[2, '\u26a0\ufe0e'], [3, '\u26a0\ufe0e'], [6, '\u26a0\ufe0e']]);
+            assert.strictEqual(markers()[0].renderOptions!.after!.color, 'inherit');
+            assert.deepStrictEqual(markers()[2].renderOptions!.after!.color, new vscode.ThemeColor('ignorelens.noMatchForeground'));
+        } finally {
+            await config.update('showMatchCount', original, vscode.ConfigurationTarget.Workspace);
+            provider.dispose();
+            scanner.dispose();
+            decorationCache.delete(uri.toString());
         }
     });
 

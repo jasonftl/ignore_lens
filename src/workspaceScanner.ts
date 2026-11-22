@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { lstat } from 'fs/promises';
 import * as path from 'path';
-import { logTiming } from './logger';
+import { log, logTiming } from './logger';
 import { checkCancellation, WorkspaceFiles, WorkspaceTree } from './workspaceTree';
 
 interface FileChange {
@@ -189,6 +189,9 @@ export class WorkspaceScanner implements vscode.Disposable {
         }
         checkCancellation(token);
         this.fileCache.set(folderKey, result);
+        for (const warning of result.warnings) {
+            if (warning.message !== 'Symlink loop') log(warning.message + ': ' + warning.path);
+        }
 
         const duration = Date.now() - startTime;
         logTiming('Workspace scan: ' + result.files.size + ' files', duration);

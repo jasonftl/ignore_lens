@@ -4,7 +4,6 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import * as path from 'path';
-import { ScanWarning } from './workspaceTree';
 import { WorkspaceScanner } from './workspaceScanner';
 import { AdvancedCountResult, DecorationStyle, IgnoreFileType, ParsedLine } from './types';
 import { log, logTiming } from './logger';
@@ -64,8 +63,8 @@ export class DecorationProvider implements vscode.Disposable {
         this.showMatchCount = this.getShowMatchCount();
 
         // Create initial decoration types
-        this.createDecorationTypes();
         this.scanStatusDecorationType = vscode.window.createTextEditorDecorationType({});
+        this.createDecorationTypes();
     }
 
     /**
@@ -236,7 +235,8 @@ export class DecorationProvider implements vscode.Disposable {
             log('Decoration update failed: ' + String(error), true);
             try {
                 if (!decorationCache.has(editor.document.uri.toString())) this.clearDecorations(editor);
-                this.showScanStatus(editor, [{ lineIndex: 0, message: 'Scan failed. Check the IgnoreLens output for details.' }]);
+                this.applyDecorationsFromData(editor, decorationCache.get(editor.document.uri.toString()), true,
+                    'Scan failed. Check the IgnoreLens output for details.');
             } catch (clearError) {
                 log('Failed to clear decorations: ' + String(clearError));
             }
@@ -266,9 +266,9 @@ export class DecorationProvider implements vscode.Disposable {
 
         // Phase 1: Check cache and show stale decorations immediately
         const cachedDecorations = decorationCache.get(documentUri);
+        update.scanning = true;
+        this.applyDecorationsFromData(editor, cachedDecorations, true, 'Scanning...');
         if (cachedDecorations) {
-            // Apply cached data with stale (darker) colours for instant feedback
-            this.applyDecorationsFromData(editor, cachedDecorations, true);
             log('Showing cached decorations (stale) while refreshing...');
         }
 
@@ -293,13 +293,11 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Get files only from this workspace folder (not other roots in multi-root workspace)
-        update.scanning = true;
-        this.showScanStatus(editor, cachedDecorations?.warnings ?? [], 'Scanning...');
         let previousProgress = 'Scanning...';
         let nextProgress = performance.now() + 1000 / 3;
         const scan = await this.workspaceScanner.getFilesInFolder(workspaceFolder, message => {
             if (isCurrent() && message !== previousProgress && performance.now() >= nextProgress) {
-                this.showScanStatus(editor, cachedDecorations?.warnings ?? [], message);
+                this.applyDecorationsFromData(editor, cachedDecorations, true, message);
                 previousProgress = message;
                 nextProgress = performance.now() + 1000 / 3;
             }
@@ -323,7 +321,13 @@ export class DecorationProvider implements vscode.Disposable {
         }
 
         // Collect line data using helper method
-        const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, isCurrent);
+        const prefix = normalisedRelativeDir ? normalisedRelativeDir + '/' : '';
+        const loopPaths = scan.warnings.flatMap(warning => {
+            if (warning.message !== 'Symlink loop' || !warning.path.startsWith(prefix)) return [];
+            const relative = warning.path.slice(prefix.length);
+            return [relative, relative + '/'];
+        });
+        const collectionResult = await this.collectLineData(document, parser, matcher, countCalculator, workspaceFiles, loopPaths, isCurrent);
         if (!collectionResult) {
             log('Cancelled stale decoration update');
             return;
@@ -341,7 +345,7 @@ export class DecorationProvider implements vscode.Disposable {
         // Store fresh data to cache only after confirming this update is still current
         const cachedData: CachedDecorations = {
             lineData: lineData,
-            warnings: [...this.scanWarnings(document, parser, matcher, normalisedRelativeDir, scan.warnings, scan.fallback), ...warnings],
+            warnings,
             maxLineLength: maxLineLength,
             maxCol1Width: maxCol1Width,
             maxCol3Width: maxCol3Width
@@ -368,73 +372,10 @@ export class DecorationProvider implements vscode.Disposable {
         }
     }
 
-    private scanWarnings(
-        document: vscode.TextDocument, parser: ILineParser, matcher: IPatternMatcher,
-        relativeDir: string, warnings: ScanWarning[], fallback?: string
-    ): LineWarning[] {
-        if (!fallback && !warnings.length) return [];
-
-        const prefix = relativeDir ? relativeDir + '/' : '';
-        const paths = new Map<string, ScanWarning>();
-        for (const warning of warnings) {
-            if (warning.path.startsWith(prefix)) {
-                const relative = warning.path.substring(prefix.length);
-                paths.set(relative, warning);
-                paths.set(relative + '/', warning);
-            }
-        }
-        const firstIssue = warnings.find(warning => warning.message === fallback) ?? warnings[0];
-        const summary = fallback ? 'Counts omit symlink targets.' : 'Some symlink targets could not be read.';
-        const detail = firstIssue && (!fallback || firstIssue.message === fallback)
-            ? firstIssue.message + ' (' + firstIssue.path + ').'
-            : fallback + '.';
-        const result: LineWarning[] = [{ lineIndex: 0, message: summary + ' ' + detail }];
-        const candidates = Array.from(paths.keys());
-        if (!candidates.length) return result;
-
-        for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex++) {
-            const rule = parser.parseLine(document.lineAt(lineIndex).text);
-            if (rule.type !== 'pattern') continue;
-            const affected = new Set(matcher.findMatches(rule.pattern, candidates).map(file => paths.get(file)!));
-            const first = affected.values().next().value;
-            if (!first) continue;
-            const more = affected.size > 1 ? ' (+' + (affected.size - 1) + ' more)' : '';
-            const message = first.message + ' (' + first.path + ')' + more + '.';
-            if (lineIndex === 0) result[0].message += '\n' + message;
-            else result.push({ lineIndex, message });
-        }
-        return result;
-    }
-
-    private showScanStatus(editor: vscode.TextEditor, warnings: LineWarning[], progress?: string): void {
-        const decorations: vscode.DecorationOptions[] = [];
-        for (const warning of warnings) {
-            if (warning.lineIndex >= editor.document.lineCount) continue;
-            decorations.push({
-                range: editor.document.lineAt(warning.lineIndex).range,
-                hoverMessage: new vscode.MarkdownString().appendText(warning.message),
-                renderOptions: { after: {
-                    contentText: '\u00a0\u26a0' + (warning.lineIndex === 0 && progress ? ' ' + progress : ''),
-                    color: new vscode.ThemeColor('editorWarning.foreground')
-                } }
-            });
-        }
-        if (progress && !warnings.some(warning => warning.lineIndex === 0)) {
-            decorations.push({
-                range: editor.document.lineAt(0).range,
-                renderOptions: { after: {
-                    contentText: '\u00a0' + progress,
-                    color: new vscode.ThemeColor('descriptionForeground')
-                } }
-            });
-        }
-        editor.setDecorations(this.scanStatusDecorationType, decorations);
-    }
-
     private clearProgress(editor: vscode.TextEditor, update: EditorUpdate): void {
         if (!update.scanning) return;
         update.scanning = false;
-        this.showScanStatus(editor, decorationCache.get(editor.document.uri.toString())?.warnings ?? []);
+        this.applyDecorationsFromData(editor, decorationCache.get(editor.document.uri.toString()), true);
     }
 
     /**
@@ -454,6 +395,7 @@ export class DecorationProvider implements vscode.Disposable {
         matcher: IPatternMatcher,
         countCalculator: ICountCalculator,
         workspaceFiles: string[],
+        loopPaths: string[],
         isCurrent: () => boolean
     ): Promise<LineCollectionResult | undefined> {
         const lineData: LineDecorationData[] = [];
@@ -506,7 +448,7 @@ export class DecorationProvider implements vscode.Disposable {
             let removed = 0;
             let countResult: AdvancedCountResult;
             const reset = parsedLine.tokens?.lastIndexOf('!') ?? -1;
-            const patterns = parsedLine.tokens?.slice(reset + 1) ?? [parsedLine.pattern];
+            let patterns = parsedLine.tokens?.slice(reset + 1) ?? [parsedLine.pattern];
             if (parsedLine.type === 'include' || reset !== -1) {
                 const previous = new Set(cumulativeSet);
                 if (parsedLine.type === 'include') {
@@ -519,6 +461,7 @@ export class DecorationProvider implements vscode.Disposable {
                     if (included.some(rule => rule.type === 'include')) {
                         warnings.push({ lineIndex, message: 'Google Cloud does not process nested include directives.' });
                     }
+                    patterns = included.filter(rule => rule.type === 'pattern').map(rule => rule.pattern);
                     for (const rule of included) {
                         if (rule.type !== 'pattern') continue;
                         if (++patternCount % patternsPerYield === 0) {
@@ -548,6 +491,16 @@ export class DecorationProvider implements vscode.Disposable {
                 const matches = await this.findLineMatches(matcher, patterns, workspaceFiles, isCurrent);
                 if (!matches) return undefined;
                 countResult = countCalculator.calculateCount(matches, isNegation, cumulativeSet, parsedLine.pattern);
+            }
+            if (loopPaths.length) {
+                const matches = await this.findLineMatches(matcher, patterns, loopPaths, isCurrent);
+                if (!matches) return undefined;
+                const loops = new Set(matches.map(file => file.replace(/\/$/, '')));
+                const [first] = loops;
+                if (first) {
+                    const more = loops.size > 1 ? ' (+' + (loops.size - 1) + ' more)' : '';
+                    warnings.push({ lineIndex, symlinkLoop: true, message: 'Symlink loop skipped: ' + first + more + '. The rest of the folder was scanned.' });
+                }
             }
             const { actionCount, noActionCount, blockedCount, setSize } = countResult;
             const lineLength = line.text.length;
@@ -674,29 +627,24 @@ export class DecorationProvider implements vscode.Disposable {
      * Shared helper used by both fresh and cached rendering paths.
      *
      * @param document - The text document
-     * @param lineData - The line decoration data
-     * @param maxLineLength - Maximum line length for padding calculation
-     * @param maxCol1Width - Maximum width of column 1
-     * @param maxCol3Width - Maximum width of column 3
+     * @param data - The cached line counts and column widths
      * @param useStaleColours - Whether to use stale (darker) colours
      * @returns Object containing noMatchDecorations and matchCountDecorations arrays
      */
     private buildDecorationsFromLineData(
         document: vscode.TextDocument,
-        lineData: LineDecorationData[],
-        maxLineLength: number,
-        maxCol1Width: number,
-        maxCol3Width: number,
-        useStaleColours: boolean
+        data: CachedDecorations,
+        useStaleColours: boolean,
+        loopLines: Set<number>
     ): { noMatchDecorations: vscode.DecorationOptions[]; matchCountDecorations: vscode.DecorationOptions[] } {
         const noMatchDecorations: vscode.DecorationOptions[] = [];
         const matchCountDecorations: vscode.DecorationOptions[] = [];
 
-        // Get stale colours if needed
+        const { lineData, maxLineLength, maxCol1Width, maxCol3Width } = data;
 
         // Build decorations from line data
-        for (const data of lineData) {
-            const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = data;
+        for (const row of lineData) {
+            const { lineIndex, lineLength, actionCount, noActionCount, isNegation, col1, col2, col3 } = row;
 
             // Check line still exists in document (important for cached data)
             if (lineIndex >= document.lineCount) {
@@ -730,12 +678,12 @@ export class DecorationProvider implements vscode.Disposable {
                 // Pad with non-breaking spaces to align all counts
                 // Clamp to 0 to prevent RangeError if document has grown since cache was created
                 const paddingCount = Math.max(0, maxLineLength - lineLength + 4);
-                const padding = '\u00A0'.repeat(paddingCount);
+                const loop = loopLines.has(lineIndex);
                 const countDecoration: vscode.DecorationOptions = {
-                    range: range,
+                    range,
                     renderOptions: {
                         after: {
-                            contentText: padding + countText,
+                            contentText: loop ? countText : nbsp.repeat(paddingCount) + countText,
                             color: countColour,
                             fontStyle: 'italic'
                         }
@@ -766,18 +714,68 @@ export class DecorationProvider implements vscode.Disposable {
      * @param cachedData - The cached decoration data
      * @param isStale - Whether to use stale (darker) decoration colours
      */
-    private applyDecorationsFromData(editor: vscode.TextEditor, cachedData: CachedDecorations, isStale: boolean): void {
+    private applyDecorationsFromData(
+        editor: vscode.TextEditor, cachedData: CachedDecorations | undefined, isStale: boolean, progress?: string
+    ): void {
         const document = editor.document;
-        const { lineData, maxLineLength, maxCol1Width, maxCol3Width } = cachedData;
 
         // Select decoration types based on stale flag
         const noMatchType = isStale ? this.staleNoMatchDecorationType : this.noMatchDecorationType;
         const matchCountType = isStale ? this.staleMatchCountDecorationType : this.matchCountDecorationType;
 
         // Build decorations using shared helper
-        const { noMatchDecorations, matchCountDecorations } = this.buildDecorationsFromLineData(
-            document, lineData, maxLineLength, maxCol1Width, maxCol3Width, isStale
-        );
+        const loopLines = new Set(cachedData?.warnings.filter(w => w.symlinkLoop).map(w => w.lineIndex));
+        const { noMatchDecorations, matchCountDecorations } = cachedData
+            ? this.buildDecorationsFromLineData(document, cachedData, isStale, loopLines)
+            : { noMatchDecorations: [], matchCountDecorations: [] };
+
+        const messages = new Map<number, string>();
+        if (progress) messages.set(0, '');
+        for (const { lineIndex, message } of cachedData?.warnings ?? []) {
+            if (lineIndex >= document.lineCount) continue;
+            const previous = messages.get(lineIndex);
+            messages.set(lineIndex, previous ? previous + '\n' + message : message);
+        }
+        const notes: vscode.DecorationOptions[] = [];
+        if (messages.size) {
+            const counts = new Map(matchCountDecorations.map(count => [count.range.start.line, count]));
+            const highlightText = this.currentStyle === 'text' || this.currentStyle === 'both';
+            const highlightedLines = new Set(highlightText ? noMatchDecorations.map(row => row.range.start.line) : []);
+            const noMatchColour = isStale ? 'ignorelens.staleNoMatchForeground' : 'ignorelens.noMatchForeground';
+            for (const [lineIndex, message] of messages) {
+                const loop = loopLines.has(lineIndex);
+                const loopColour = highlightedLines.has(lineIndex) ? new vscode.ThemeColor(noMatchColour) : 'inherit';
+                const status = lineIndex === 0 && progress ? '\u00a0' + progress : '';
+                const marker = loop ? '\u00a0\u26a0\ufe0e' : '\u00a0\u26a0';
+                const hover = message ? new vscode.MarkdownString().appendText(message) : undefined;
+                const count = counts.get(lineIndex);
+                if (count?.renderOptions?.after && cachedData) {
+                    count.renderOptions.after.contentText += status + (message && !loop ? marker : '');
+                    count.hoverMessage = hover;
+                    if (loop) {
+                        const line = document.lineAt(lineIndex);
+                        // Both attachments share the rule's range and its single hover message.
+                        const padding = Math.max(0, cachedData.maxLineLength - line.text.length + 2);
+                        notes.push({
+                            range: line.range,
+                            renderOptions: { after: {
+                                contentText: '\u00a0'.repeat(padding) + '\u26a0\ufe0e\u00a0',
+                                color: count.renderOptions.after.color
+                            } }
+                        });
+                    }
+                } else {
+                    notes.push({
+                        range: document.lineAt(lineIndex).range,
+                        hoverMessage: hover,
+                        renderOptions: { after: {
+                            contentText: (message ? marker : '') + status,
+                            color: loop ? loopColour : new vscode.ThemeColor(message ? 'editorWarning.foreground' : 'descriptionForeground')
+                        } }
+                    });
+                }
+            }
+        }
 
         // Clear existing decorations first (both stale and normal)
         if (this.noMatchDecorationType) {
@@ -797,10 +795,11 @@ export class DecorationProvider implements vscode.Disposable {
         if (noMatchType) {
             editor.setDecorations(noMatchType, noMatchDecorations);
         }
+        // Insert the triangle before the count at the same end-of-line position.
+        editor.setDecorations(this.scanStatusDecorationType, notes);
         if (matchCountType) {
             editor.setDecorations(matchCountType, matchCountDecorations);
         }
-        this.showScanStatus(editor, cachedData.warnings);
     }
 
     /**

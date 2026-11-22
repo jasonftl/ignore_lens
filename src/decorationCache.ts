@@ -20,6 +20,7 @@ export interface LineDecorationData {
 export interface LineWarning {
     lineIndex: number;
     message: string;
+    symlinkLoop?: true;
 }
 
 /**

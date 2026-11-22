@@ -11,7 +11,6 @@ export interface ScanWarning {
 export interface WorkspaceFiles {
     files: Set<string>;
     warnings: ScanWarning[];
-    fallback?: string;
 }
 
 interface Directory {
@@ -104,15 +103,12 @@ export class WorkspaceTree {
     public async scan(token: vscode.CancellationToken, report: (message: string) => void): Promise<WorkspaceFiles> {
         const root = this.root ??= await realpath(this.folder);
         const pending: Directory[] = [{ absolute: root, relative: '', linked: false }];
-        const linkedFiles = new Set<string>();
         const links = new Set<string>();
-        const physicalLinks = new Set<string>();
         let checkFileTargets = false;
         const linkedParents = new Map<string, string[]>();
         const locations = new Map<string, string>();
         const warnings = new Map<string, string>();
         const files = new Set<string>();
-        let fallback: string | undefined;
         let directories = 0;
         let nextUpdate = performance.now() + 300;
         const showProgress = async () => {
@@ -126,7 +122,6 @@ export class WorkspaceTree {
             checkCancellation(token);
             if (performance.now() >= nextUpdate) await showProgress();
             const directory = pending.pop()!;
-            if (directory.linked && fallback) continue;
             locations.set(directory.relative, directory.absolute);
             if (directory.linked) {
                 const parents = linkedParents.get(directory.absolute) ?? [];
@@ -140,7 +135,6 @@ export class WorkspaceTree {
                 const message = unavailableMessage(error);
                 if (!message || !directory.parent) throw error;
                 warnings.set(directory.relative, message);
-                fallback ??= message;
                 continue;
             }
             directories++;
@@ -149,12 +143,8 @@ export class WorkspaceTree {
                 const relative = directory.relative ? directory.relative + '/' + entry.name : entry.name;
                 let absolute = path.join(directory.absolute, entry.name);
                 const link = entry.isSymbolicLink();
-                if (link) {
-                    links.add(relative);
-                    if (!directory.linked) physicalLinks.add(relative);
-                }
+                if (link) links.add(relative);
                 const linked = directory.linked || link;
-                if (linked && fallback) continue;
                 let type: Pick<Dirent, 'isDirectory' | 'isFile'> = entry;
                 if (link) {
                     try {
@@ -164,21 +154,19 @@ export class WorkspaceTree {
                         const message = unavailableMessage(error);
                         if (!message) throw error;
                         warnings.set(relative, message);
-                        checkFileTargets = true;
-                        if (message !== 'Target unavailable') fallback = message;
+                        if (message !== 'Symlink loop') checkFileTargets = true;
                         continue;
                     }
                 }
                 if (type.isDirectory()) {
                     if (linked && hasAncestor(directory, absolute)) {
                         warnings.set(relative, 'Symlink loop');
-                        fallback = 'Symlink loop';
                     } else {
                         pending.push({ absolute, relative, parent: directory, linked });
                     }
                 } else if (type.isFile()) {
                     if (link) checkFileTargets = true;
-                    (linked ? linkedFiles : files).add(relative);
+                    files.add(relative);
                 }
             }
         }
@@ -189,16 +177,8 @@ export class WorkspaceTree {
             if (!visited.has(key)) this.listings.delete(key);
         }
         this.links = links;
-        this.checkFileTargets = checkFileTargets && !fallback;
+        this.checkFileTargets = checkFileTargets;
         this.linkedParents = linkedParents;
-        if (fallback) {
-            this.linkedParents.clear();
-            for (const link of physicalLinks) {
-                if (!warnings.has(link)) warnings.set(link, 'Symlink target skipped');
-            }
-        } else {
-            for (const file of linkedFiles) files.add(file);
-        }
-        return { files, warnings: Array.from(warnings, ([path, message]) => ({ path, message })), fallback };
+        return { files, warnings: Array.from(warnings, ([path, message]) => ({ path, message })) };
     }
 }

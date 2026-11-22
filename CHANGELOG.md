@@ -14,11 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Scan each workspace folder the first time an ignore file is opened and show progress until the scan finishes. Reuse the result across tabs, and check new files, directories, and links as VS Code reports them.
-- Count large, safe linked directories in full. A loop still produces a warning and skips linked targets.
+- Follow working symlinks and stop at each loop. Show a warning triangle before the count in the same colour as the count. Hover anywhere from the triangle to the last count to see the skipped path.
 - Update runtime and development dependencies.
 
 ### Fixed
-- Check symlinks when link following is enabled, and warn when targets are skipped.
 - Cancel a scan when its workspace folder is removed or Ignore Lens is disabled.
 - Release cached gitignore match results after each batch of files.
 - Apply Git's parent-directory rules, match its bracket case-folding behaviour, and preserve escaped trailing spaces (ISSUE-H004, ISSUE-M026, ISSUE-M027, ISSUE-M028, ISSUE-M029).

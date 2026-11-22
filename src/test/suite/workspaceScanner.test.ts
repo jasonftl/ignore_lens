@@ -92,7 +92,7 @@ suite('WorkspaceScanner Test Suite', () => {
             const messages: string[] = [];
             const scan = await scanner.getFilesInFolder(folder, message => messages.push(message));
             assert.ok(messages.some(message => message.includes('folders')));
-            assert.strictEqual(scan.fallback, undefined);
+            assert.deepStrictEqual(scan.warnings, []);
             assert.ok(scan.files.has('ignored/file.txt'));
             assert.strictEqual(await scanner.getFilesInFolder(folder, () => assert.fail('Unexpected repeat scan')), scan);
         } finally {
@@ -102,7 +102,7 @@ suite('WorkspaceScanner Test Suite', () => {
         }
     });
 
-    test('detects a symlink loop before searching and skips linked targets', async () => {
+    test('stops at each loop and keeps files reached through a working link', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
         const alias = vscode.Uri.joinPath(folder.uri, 'alias');
@@ -114,12 +114,27 @@ suite('WorkspaceScanner Test Suite', () => {
             await symlink(target.fsPath, alias.fsPath, type);
             await symlink(folder.uri.fsPath, loop.fsPath, type);
             const result = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(result.fallback, 'Symlink loop');
             assert.ok(result.files.has('ignored/file.txt'));
-            assert.ok(!result.files.has('alias/file.txt'));
+            assert.ok(result.files.has('alias/file.txt'));
             assert.ok(result.files.has('.git/HEAD'));
-            assert.ok(result.warnings.some(warning => warning.path === 'alias'));
-            assert.ok(result.warnings.some(warning => warning.path.endsWith('/loop') && warning.message === 'Symlink loop'));
+            assert.deepStrictEqual(result.warnings.sort((a, b) => a.path.localeCompare(b.path)), [
+                { path: 'alias/loop', message: 'Symlink loop' },
+                { path: 'ignored/loop', message: 'Symlink loop' }
+            ]);
+            assert.ok(![...result.files].some(file => file.includes('/loop/')));
+
+            const added = vscode.Uri.joinPath(target, 'added-beside-loop.txt');
+            await writeFile(added.fsPath, '');
+            try {
+                await scanner.addPath(added);
+                const updated = await scanner.getFilesInFolder(folder);
+                assert.strictEqual(updated, result);
+                assert.ok(updated.files.has('alias/added-beside-loop.txt'));
+            } finally {
+                await unlink(added.fsPath);
+            }
+            scanner.removePath(added);
+            assert.ok(!result.files.has('alias/added-beside-loop.txt'));
         } finally {
             scanner.dispose();
             for (const uri of [loop, alias]) {
@@ -127,6 +142,32 @@ suite('WorkspaceScanner Test Suite', () => {
                     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
                         throw error;
                     }
+                });
+            }
+        }
+    });
+
+    test('skips links that point to each other and still counts an unrelated linked directory', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const a = vscode.Uri.joinPath(folder.uri, 'cycle-a');
+        const b = vscode.Uri.joinPath(folder.uri, 'cycle-b');
+        const alias = vscode.Uri.joinPath(folder.uri, 'working-alias');
+        const type = process.platform === 'win32' ? 'junction' : 'dir';
+        const scanner = new WorkspaceScanner();
+        try {
+            await symlink(b.fsPath, a.fsPath, type);
+            await symlink(a.fsPath, b.fsPath, type);
+            await symlink(vscode.Uri.joinPath(folder.uri, 'ignored').fsPath, alias.fsPath, type);
+            const result = await scanner.getFilesInFolder(folder);
+            assert.deepStrictEqual(new Set(result.warnings.map(w => w.message + ': ' + w.path)),
+                new Set(['Symlink loop: cycle-a', 'Symlink loop: cycle-b']));
+            assert.ok(result.files.has('working-alias/file.txt'));
+        } finally {
+            scanner.dispose();
+            for (const uri of [a, b, alias]) {
+                await unlink(uri.fsPath).catch(error => {
+                    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
                 });
             }
         }
@@ -183,7 +224,6 @@ suite('WorkspaceScanner Test Suite', () => {
             await symlink(target.fsPath, alias.fsPath, process.platform === 'win32' ? 'junction' : 'dir');
             const result = await scanner.getFilesInFolder(folder);
             assert.ok(result.files.has('ignored/file.txt'));
-            assert.strictEqual(result.fallback, undefined);
             assert.ok(result.files.has('small-alias/file.txt'));
 
             const created = vscode.Uri.joinPath(target, 'through-alias.txt');
@@ -207,7 +247,7 @@ suite('WorkspaceScanner Test Suite', () => {
         }
     });
 
-    test('checks a moved directory for loops and restores safe links when the loop goes away', async () => {
+    test('checks a moved directory for loops and clears the warning when the loop goes away', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
         const type = process.platform === 'win32' ? 'junction' : 'dir';
@@ -229,15 +269,14 @@ suite('WorkspaceScanner Test Suite', () => {
 
             await scanner.addPath(incoming);
             const unsafe = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(unsafe.fallback, 'Symlink loop');
+            assert.deepStrictEqual(unsafe.warnings, [{ path: 'incoming/loop', message: 'Symlink loop' }]);
             assert.ok(unsafe.files.has('incoming/new.txt'));
-            assert.ok(!unsafe.files.has('safe-alias/file.txt'));
+            assert.ok(unsafe.files.has('safe-alias/file.txt'));
             assert.ok(!unsafe.files.has('ignored/unreported.txt'));
 
             await unlink(loop.fsPath);
             scanner.removePath(loop);
             const safe = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(safe.fallback, undefined);
             assert.deepStrictEqual(safe.warnings, []);
             assert.ok(safe.files.has('safe-alias/file.txt'));
             await scanner.addPath(unreported);
@@ -274,7 +313,6 @@ suite('WorkspaceScanner Test Suite', () => {
             await symlink(archive, path.join(workspace, 'linked'), linkType);
 
             const result = await scanner.getFilesInFolder({ uri: vscode.Uri.file(workspace), name: 'workspace', index: 0 });
-            assert.strictEqual(result.fallback, undefined);
             assert.deepStrictEqual(result.warnings, []);
             assert.strictEqual(result.files.size, 33 * 256 + 1);
             assert.ok(result.files.has('linked/alias-32/255'));
@@ -293,8 +331,8 @@ suite('WorkspaceScanner Test Suite', () => {
 
         const scanner = new WorkspaceScanner();
         try {
-            const { files, fallback } = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(fallback, undefined);
+            const { files, warnings } = await scanner.getFilesInFolder(folder);
+            assert.deepStrictEqual(warnings, []);
             assert.ok(files.has('ignored/file.txt'));
             assert.ok(files.has('.git/HEAD'));
         } finally {
