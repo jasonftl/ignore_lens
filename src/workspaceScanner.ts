@@ -2,16 +2,15 @@
 // Scans workspace files for pattern matching
 
 import * as vscode from 'vscode';
-import { opendir, realpath, stat } from 'fs/promises';
+import { lstat } from 'fs/promises';
 import * as path from 'path';
-import { log, logTiming } from './logger';
-
-const LINK_CHECK_BUDGET_MS = 250;
-const LINKED_ENTRY_BUDGET = 8192;
+import { logTiming } from './logger';
+import { checkCancellation, WorkspaceFiles, WorkspaceTree } from './workspaceTree';
 
 interface FileChange {
     path: string;
     exists: boolean;
+    subtree: boolean;
 }
 
 interface WorkspaceScan {
@@ -21,146 +20,12 @@ interface WorkspaceScan {
     progress: { report?: (message: string) => void };
 }
 
-interface Directory {
-    absolutePath: string;
-    prefix: string;
-    parent?: Directory;
-    viaLink?: string;
-}
-
-export interface ScanWarning {
-    path: string;
-    message: string;
-}
-
-interface WorkspaceFiles {
-    files: Set<string>;
-    warnings: ScanWarning[];
-    fallback?: string;
-}
-
-function checkCancellation(token: vscode.CancellationToken): void {
-    if (token.isCancellationRequested) {
-        throw new vscode.CancellationError();
-    }
-}
-
-function unavailableMessage(error: unknown): string | undefined {
-    switch ((error as NodeJS.ErrnoException).code) {
-        case 'ENOENT':
-        case 'ENOTDIR': return 'Target unavailable';
-        case 'ELOOP': return 'Symlink loop';
-        case 'EACCES':
-        case 'EPERM': return 'Permission denied';
-        case 'UNKNOWN': return process.platform === 'win32' ? 'Target unavailable' : undefined;
-        default: return undefined;
-    }
-}
-
-function hasAncestor(directory: Directory | undefined, target: string): boolean {
-    for (let ancestor = directory; ancestor; ancestor = ancestor.parent) {
-        if (path.relative(ancestor.absolutePath, target) === '') {
-            return true;
-        }
-    }
-    return false;
-}
-
-/** Checks the tree before giving the full search to VS Code. */
-async function checkSymlinks(root: string, token: vscode.CancellationToken, warnings: ScanWarning[]): Promise<string | undefined> {
-    const started = performance.now();
-    let level: Directory[] = [{ absolutePath: root, prefix: '' }];
-    let linkedEntries = 0;
-    while (level.length) {
-        const next: Directory[] = [];
-        const pastBudget = () => performance.now() - started >= LINK_CHECK_BUDGET_MS;
-        for (const directory of level) {
-            checkCancellation(token);
-            if (pastBudget()) {
-                return 'Symlink check did not finish';
-            }
-            try {
-                const entries = await opendir(directory.absolutePath, { bufferSize: 256 });
-                for await (const entry of entries) {
-                    checkCancellation(token);
-                    if (pastBudget()) {
-                        return 'Symlink check did not finish';
-                    }
-                    if (directory.viaLink && ++linkedEntries >= LINKED_ENTRY_BUDGET) {
-                        warnings.push({ path: directory.viaLink, message: 'Linked directory exceeded the pre-scan size budget' });
-                        return 'Linked directory exceeded the pre-scan size budget';
-                    }
-                    const relative = directory.prefix + entry.name;
-                    let actual = path.join(directory.absolutePath, entry.name);
-                    let viaLink = directory.viaLink;
-                    if (entry.isSymbolicLink()) {
-                        try {
-                            actual = await realpath(actual);
-                            if (!(await stat(actual)).isDirectory()) {
-                                continue;
-                            }
-                        } catch (error) {
-                            const message = unavailableMessage(error);
-                            if (!message) throw error;
-                            warnings.push({ path: relative, message });
-                            if (message === 'Symlink loop' || message === 'Permission denied') return message;
-                            continue;
-                        }
-                        viaLink ??= relative;
-                    } else if (!entry.isDirectory()) {
-                        continue;
-                    }
-                    if (viaLink && hasAncestor(directory, actual)) {
-                        warnings.push({ path: entry.isSymbolicLink() ? relative : viaLink, message: 'Symlink loop' });
-                        return 'Symlink loop';
-                    }
-                    next.push({ absolutePath: actual, prefix: relative + '/', parent: directory, viaLink });
-                }
-            } catch (error) {
-                const message = unavailableMessage(error);
-                if (!directory.parent || !message) throw error;
-                warnings.push({ path: directory.prefix.slice(0, -1), message });
-                return message;
-            }
-        }
-        level = next;
-    }
-    return undefined;
-}
-
-async function scanWithoutLinks(
-    root: string, token: vscode.CancellationToken, result: WorkspaceFiles, report: (message: string) => void
-): Promise<void> {
-    const directories = [{ absolutePath: root, prefix: '' }];
-    const warned = new Set(result.warnings.map(warning => warning.path));
-    let nextUpdate = performance.now() + 1000 / 3;
-    while (directories.length) {
-        checkCancellation(token);
-        const directory = directories.pop()!;
-        try {
-            const entries = await opendir(directory.absolutePath, { bufferSize: 256 });
-            for await (const entry of entries) {
-                checkCancellation(token);
-                const relative = directory.prefix + entry.name;
-                if (entry.isSymbolicLink()) {
-                    if (!warned.has(relative)) result.warnings.push({ path: relative, message: 'Symlink target skipped' });
-                } else if (entry.isDirectory()) {
-                    directories.push({ absolutePath: path.join(directory.absolutePath, entry.name), prefix: relative + '/' });
-                } else if (entry.isFile()) {
-                    result.files.add(relative);
-                }
-                if (performance.now() >= nextUpdate) {
-                    report('Scanning... ' + result.files.size.toLocaleString() + ' files');
-                    nextUpdate = performance.now() + 1000 / 3;
-                }
-            }
-        } catch (error) {
-            const message = unavailableMessage(error);
-            if (!directory.prefix || !message) throw error;
-            const relative = directory.prefix.slice(0, -1);
-            if (!warned.has(relative)) result.warnings.push({ path: relative, message });
-        }
-    }
+async function pathType(uri: vscode.Uri): Promise<{ type: vscode.FileType }> {
+    if (uri.scheme !== 'file') return vscode.workspace.fs.stat(uri);
+    const info = await lstat(uri.fsPath);
+    if (info.isSymbolicLink()) return { type: vscode.FileType.SymbolicLink };
+    if (info.isDirectory()) return { type: vscode.FileType.Directory };
+    return { type: info.isFile() ? vscode.FileType.File : vscode.FileType.Unknown };
 }
 
 /**
@@ -169,22 +34,31 @@ async function scanWithoutLinks(
  */
 export class WorkspaceScanner implements vscode.Disposable {
     private readonly fileCache = new Map<string, WorkspaceFiles>();
+    private readonly trees = new Map<string, WorkspaceTree>();
     private readonly pendingCreates = new Map<string, symbol>();
     private readonly scans = new Map<string, WorkspaceScan>();
     private readonly workspaceFolderDisposable: vscode.Disposable;
 
     constructor(
         private readonly findFiles = vscode.workspace.findFiles,
-        private readonly statPath = vscode.workspace.fs.stat
+        private readonly statPath = pathType
     ) {
-        this.workspaceFolderDisposable = vscode.workspace.onDidChangeWorkspaceFolders(() => this.invalidate());
+        this.workspaceFolderDisposable = vscode.workspace.onDidChangeWorkspaceFolders(({ removed }) => {
+            for (const folder of removed) {
+                const key = folder.uri.toString();
+                this.invalidateFolder(key);
+                this.trees.delete(key);
+                for (const uri of this.pendingCreates.keys()) {
+                    if (uri.startsWith(key + '/')) this.pendingCreates.delete(uri);
+                }
+            }
+        });
     }
 
     public async getFilesInFolder(
-        folder: vscode.WorkspaceFolder, fresh = false, report?: (message: string) => void
+        folder: vscode.WorkspaceFolder, report?: (message: string) => void
     ): Promise<WorkspaceFiles> {
         const folderKey = folder.uri.toString();
-        if (fresh && !this.scans.has(folderKey)) this.fileCache.delete(folderKey);
         const cachedFiles = this.fileCache.get(folderKey);
         if (cachedFiles) {
             return cachedFiles;
@@ -217,38 +91,40 @@ export class WorkspaceScanner implements vscode.Disposable {
         scan?.cancellation.cancel();
     }
 
-    public cancelScans(keepFolders: readonly vscode.WorkspaceFolder[] = []): void {
-        const keepKeys = new Set(keepFolders.map(folder => folder.uri.toString()));
-        for (const [folderKey, scan] of this.scans) {
-            if (!keepKeys.has(folderKey)) {
-                this.scans.delete(folderKey);
-                scan.cancellation.cancel();
-            }
-        }
+    public cancelScans(): void {
+        for (const scan of this.scans.values()) scan.cancellation.cancel();
+        this.scans.clear();
     }
 
-    /** Adds a new file or invalidates the folder for a new directory or link. */
-    public async addPath(uri: vscode.Uri): Promise<'file' | 'rescan' | undefined> {
+    /** Inspect new paths and detect links replaced in place. */
+    public async addPath(uri: vscode.Uri, contentChange = false): Promise<'file' | 'rescan' | undefined> {
         const folder = vscode.workspace.getWorkspaceFolder(uri);
         if (!folder || !this.isTracking(folder)) return;
 
+        const tree = this.trees.get(folder.uri.toString());
+        if (contentChange && !tree) return;
+        const relative = this.relativePath(folder, uri);
         const key = uri.toString();
+        if (this.pendingCreates.has(key)) contentChange = false;
         const event = Symbol();
         this.pendingCreates.set(key, event);
         try {
             const stat = await this.statPath(uri);
             if (this.pendingCreates.get(key) !== event) return;
 
-            if ((stat.type & (vscode.FileType.Directory | vscode.FileType.SymbolicLink)) !== 0) {
-                this.invalidateFolder(folder.uri.toString());
+            const structural = (stat.type & (vscode.FileType.Directory | vscode.FileType.SymbolicLink)) !== 0
+                || tree?.isDirectoryOrLink(relative);
+            if (structural) {
+                this.recordChange(folder, uri, true, true);
                 return 'rescan';
             }
+            if (contentChange || stat.type !== vscode.FileType.File) return;
 
             this.recordChange(folder, uri, true);
-            return 'file';
+            return tree?.links.size ? 'rescan' : 'file';
         } catch (error) {
             if (this.pendingCreates.get(key) !== event) return;
-            this.recordChange(folder, uri, false);
+            this.recordChange(folder, uri, false, tree?.isDirectoryOrLink(relative));
             throw error;
         } finally {
             if (this.pendingCreates.get(key) === event) this.pendingCreates.delete(key);
@@ -269,13 +145,14 @@ export class WorkspaceScanner implements vscode.Disposable {
         }
 
         const cached = this.fileCache.get(folder.uri.toString());
-        if (!cached?.files.has(this.relativePath(folder, uri))) {
+        const subtree = !cached?.files.has(this.relativePath(folder, uri));
+        if (subtree) {
             const prefix = key + '/';
             for (const pending of this.pendingCreates.keys()) {
                 if (pending.startsWith(prefix)) this.pendingCreates.delete(pending);
             }
         }
-        this.recordChange(folder, uri, false);
+        this.recordChange(folder, uri, false, subtree);
         return true;
     }
 
@@ -288,18 +165,29 @@ export class WorkspaceScanner implements vscode.Disposable {
     ): Promise<WorkspaceFiles> {
         const startTime = Date.now();
 
-        const result = await this.readFiles(folder, token, report);
-        checkCancellation(token);
-
-        for (const change of changes) {
-            if (change.exists) {
-                if (result.fallback && result.warnings.some(warning =>
-                    change.path === warning.path || change.path.startsWith(warning.path + '/'))) continue;
-                result.files.add(change.path);
-            } else {
-                this.removeFromResult(result, change.path);
+        const search = vscode.workspace.getConfiguration('search', folder.uri);
+        let result: WorkspaceFiles;
+        // Remote SSH also exposes native paths as file URIs in its workspace extension host.
+        if (folder.uri.scheme === 'file' && search.get('followSymlinks', true)) {
+            const tree = this.trees.get(folderKey) ?? new WorkspaceTree(folder.uri.fsPath);
+            this.trees.set(folderKey, tree);
+            // Directory reads can overlap watcher events. Replay with the changed listings.
+            do {
+                changes.length = 0;
+                result = await tree.scan(token, report);
+                for (const change of changes) tree.changed(change.path, change.subtree);
+            } while (!changes.every(change => this.updateFiles(tree, result, change)));
+        } else {
+            report('Scanning files...');
+            const pattern = new vscode.RelativePattern(folder, '**/*');
+            const files = await this.findFiles(pattern, null, undefined, token);
+            result = { files: new Set(files.map(file => this.relativePath(folder, file))), warnings: [] };
+            for (const change of changes) {
+                if (change.exists) result.files.add(change.path);
+                else this.removeFromResult(result, change.path);
             }
         }
+        checkCancellation(token);
         this.fileCache.set(folderKey, result);
 
         const duration = Date.now() - startTime;
@@ -307,52 +195,42 @@ export class WorkspaceScanner implements vscode.Disposable {
         return result;
     }
 
-    private async readFiles(
-        folder: vscode.WorkspaceFolder, token: vscode.CancellationToken, report: (message: string) => void
-    ): Promise<WorkspaceFiles> {
-        const result: WorkspaceFiles = { files: new Set(), warnings: [] };
-        const search = vscode.workspace.getConfiguration('search', folder.uri);
-        // Remote SSH exposes native paths as file URIs in its workspace extension host.
-        if (folder.uri.scheme === 'file' && search.get('followSymlinks', true)) {
-            const root = await realpath(folder.uri.fsPath);
-            result.fallback = await checkSymlinks(root, token, result.warnings);
-            if (result.fallback) {
-                log(result.fallback + '. Scanning without following symlinks.');
-                report('Scanning without symlinks...');
-                await scanWithoutLinks(root, token, result, report);
-                return result;
-            }
-        }
-
-        checkCancellation(token);
-        report('Scanning files...');
-        const pattern = new vscode.RelativePattern(folder, '**/*');
-        const files = await this.findFiles(pattern, null, undefined, token);
-        checkCancellation(token);
-        for (const file of files) {
-            result.files.add(this.relativePath(folder, file));
-        }
-        return result;
-    }
-
-    private recordChange(folder: vscode.WorkspaceFolder, uri: vscode.Uri, exists: boolean): void {
-        const folderKey = folder.uri.toString();
-        const relativePath = this.relativePath(folder, uri);
-        const cachedFiles = this.fileCache.get(folderKey);
-
-        if (cachedFiles) {
-            if (cachedFiles.fallback) {
-                // A rescan keeps skipped paths and warnings in sync with filesystem changes.
-                this.fileCache.delete(folderKey);
-            } else if (exists) {
-                cachedFiles.files.add(relativePath);
-            } else {
-                this.removeFromResult(cachedFiles, relativePath);
-            }
+    private recordChange(folder: vscode.WorkspaceFolder, uri: vscode.Uri, exists: boolean, subtree = false): void {
+        const key = folder.uri.toString();
+        const relative = this.relativePath(folder, uri);
+        const tree = this.trees.get(key);
+        tree?.changed(relative, subtree);
+        if (subtree && !tree && exists) {
+            this.invalidateFolder(key);
             return;
         }
+        const cached = this.fileCache.get(key);
+        if (cached) {
+            if (tree) {
+                if (!this.updateFiles(tree, cached, { path: relative, exists, subtree })) this.fileCache.delete(key);
+            } else if (exists) {
+                cached.files.add(relative);
+            } else {
+                this.removeFromResult(cached, relative);
+            }
+        } else {
+            this.scans.get(key)?.changes.push({ path: relative, exists, subtree });
+        }
+    }
 
-        this.scans.get(folderKey)?.changes.push({ path: relativePath, exists });
+    private updateFiles(tree: WorkspaceTree, cached: WorkspaceFiles, change: FileChange): boolean {
+        if (change.subtree && !change.exists && !tree.links.size && !cached.warnings.length) {
+            this.removeFromResult(cached, change.path);
+            return true;
+        }
+        if (change.subtree || tree.links.has(change.path)) return false;
+        const paths = tree.filePaths(change.path);
+        if (!paths) return false;
+        for (const file of paths) {
+            if (change.exists) cached.files.add(file);
+            else cached.files.delete(file);
+        }
+        return true;
     }
 
     private relativePath(folder: vscode.WorkspaceFolder, uri: vscode.Uri): string {
@@ -361,7 +239,7 @@ export class WorkspaceScanner implements vscode.Disposable {
 
     private isTracking(folder: vscode.WorkspaceFolder): boolean {
         const folderKey = folder.uri.toString();
-        return this.fileCache.has(folderKey) || this.scans.has(folderKey);
+        return this.fileCache.has(folderKey) || this.scans.has(folderKey) || this.trees.has(folderKey);
     }
 
     private removeFromResult(result: WorkspaceFiles, removedPath: string): void {
@@ -377,6 +255,7 @@ export class WorkspaceScanner implements vscode.Disposable {
     public invalidate(): void {
         this.cancelScans();
         this.fileCache.clear();
+        this.trees.clear();
         this.pendingCreates.clear();
     }
 

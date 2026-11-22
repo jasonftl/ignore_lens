@@ -20,8 +20,10 @@ suite('DecorationProvider Test Suite', () => {
     test('warns about unsupported Helm syntax and evaluates CVS tokens and resets', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
-        const scanner = new WorkspaceScanner(async () => ['app.ts', 'file10.txt', 'sub/cache.tmp', 'a.txt', '-.txt']
-            .map(file => vscode.Uri.joinPath(folder.uri, file)));
+        const scanner = new WorkspaceScanner();
+        scanner.getFilesInFolder = async () => ({
+            files: new Set(['app.ts', 'file10.txt', 'sub/cache.tmp', 'a.txt', '-.txt']), warnings: []
+        });
         const provider = new DecorationProvider(scanner);
         const editor = (name: string, lines: string[]) => ({
             document: {
@@ -101,7 +103,7 @@ suite('DecorationProvider Test Suite', () => {
         }
     });
 
-    test('refreshes the file scan on tab return and shows a loop warning', async () => {
+    test('shows a loop warning after a watcher reports a new link', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
         const loop = vscode.Uri.joinPath(folder.uri, 'ignored', 'loop');
@@ -113,21 +115,16 @@ suite('DecorationProvider Test Suite', () => {
                 applied.push(...decorations);
             }
         } as vscode.TextEditor;
-        let searches = 0;
-        const scanner = new WorkspaceScanner(async () => {
-            searches++;
-            return [vscode.Uri.joinPath(folder.uri, 'ignored', 'file.txt')];
-        });
+        const scanner = new WorkspaceScanner();
         const provider = new DecorationProvider(scanner);
         try {
             await provider.updateDecorations(editor);
-            assert.strictEqual(searches, 1);
             assert.ok(!applied.some(decoration => decoration.hoverMessage));
             applied.length = 0;
 
             await symlink(folder.uri.fsPath, loop.fsPath, process.platform === 'win32' ? 'junction' : 'dir');
-            await provider.updateDecorations(editor, true);
-            assert.strictEqual(searches, 1);
+            await scanner.addPath(loop);
+            await provider.updateDecorations(editor);
             const marker = applied.find(decoration => decoration.renderOptions?.after?.contentText?.includes('\u26a0'));
             assert.ok(marker?.hoverMessage);
             assert.match((marker.hoverMessage as vscode.MarkdownString).value, /Symlink.*loop/);
@@ -139,6 +136,36 @@ suite('DecorationProvider Test Suite', () => {
             await unlink(loop.fsPath).catch(error => {
                 if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
             });
+        }
+    });
+
+    test('updates an open ignore file when VS Code reports a new junction and its removal', async function () {
+        this.timeout(15000);
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const uri = vscode.Uri.joinPath(folder.uri, '.gitignore');
+        const loop = vscode.Uri.joinPath(folder.uri, 'watched-loop');
+        const waitForLoop = async (expected: boolean) => {
+            for (let attempt = 0; attempt < 100; attempt++) {
+                const data = decorationCache.get(uri.toString());
+                if (data && data.warnings.some(w => w.message.includes('watched-loop')) === expected) return;
+                await new Promise(resolve => setTimeout(resolve, 40));
+            }
+            assert.fail('The loop warning did not reach the expected state: ' + expected);
+        };
+        await vscode.extensions.getExtension('ignore-lens.ignore-lens')!.activate();
+        await vscode.window.showTextDocument(uri, { preview: true });
+        try {
+            await waitForLoop(false);
+            await symlink(folder.uri.fsPath, loop.fsPath, process.platform === 'win32' ? 'junction' : 'dir');
+            await waitForLoop(true);
+            await unlink(loop.fsPath);
+            await waitForLoop(false);
+        } finally {
+            await unlink(loop.fsPath).catch(error => {
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            });
+            await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
         }
     });
 

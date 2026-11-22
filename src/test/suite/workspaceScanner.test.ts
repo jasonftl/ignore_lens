@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, realpath, rename, rm, rmdir, symlink, unlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { WorkspaceScanner } from '../../workspaceScanner';
@@ -12,7 +12,7 @@ suite('WorkspaceScanner Test Suite', () => {
         const uri = vscode.Uri.joinPath(folder.uri, 'recreated.ts');
         let failFirst!: (error: Error) => void;
         let first = true;
-        const scanner = new WorkspaceScanner(async () => [], () => {
+        const scanner = new WorkspaceScanner(undefined, () => {
             if (!first) return Promise.resolve({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: 0 });
             first = false;
             return new Promise((_resolve, reject) => { failFirst = reject; });
@@ -33,12 +33,12 @@ suite('WorkspaceScanner Test Suite', () => {
     test('cancels pending creates by exact path for known files and by subtree for directories', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
-        const file = vscode.Uri.joinPath(folder.uri, 'ordinary.txt');
+        const file = vscode.Uri.joinPath(folder.uri, 'ignored', 'file.txt');
         const directory = vscode.Uri.joinPath(folder.uri, 'gone-directory');
         const child = vscode.Uri.joinPath(directory, 'pending.txt');
         const sibling = vscode.Uri.joinPath(folder.uri, 'sibling.txt');
         const complete: Array<(stat: vscode.FileStat) => void> = [];
-        const scanner = new WorkspaceScanner(async () => [file], () => new Promise(resolve => complete.push(resolve)));
+        const scanner = new WorkspaceScanner(undefined, () => new Promise(resolve => complete.push(resolve)));
         const pending = (scanner as unknown as { pendingCreates: Map<string, symbol> }).pendingCreates;
         const keys = pending.keys.bind(pending);
         let walks = 0;
@@ -58,42 +58,43 @@ suite('WorkspaceScanner Test Suite', () => {
 
             for (const finish of complete) finish({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: 0 });
             assert.deepStrictEqual(await Promise.all(creates), [undefined, undefined, 'file']);
-            assert.deepStrictEqual([...(await scanner.getFilesInFolder(folder)).files], ['sibling.txt']);
+            const files = (await scanner.getFilesInFolder(folder)).files;
+            assert.ok(files.has('sibling.txt'));
+            assert.ok(!files.has('gone-directory/pending.txt'));
         } finally {
             scanner.dispose();
         }
     });
 
-    test('removes a cached link warning on deletion and deletes known files directly', async () => {
+    test('deletes a known file without iterating the cached file set', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
-        const link = vscode.Uri.joinPath(folder.uri, 'gone-link');
-        const file = vscode.Uri.joinPath(folder.uri, 'ordinary.txt');
-        const scanner = new WorkspaceScanner(async () => [file]);
+        const scanner = new WorkspaceScanner();
         try {
             const cached = await scanner.getFilesInFolder(folder);
-            cached.warnings.push({ path: 'gone-link', message: 'Target unavailable' });
-            assert.ok(scanner.removePath(link));
-            assert.deepStrictEqual(cached.warnings, []);
-            cached.files[Symbol.iterator] = () => assert.fail('A known file can be deleted without scanning the set.');
-            assert.ok(scanner.removePath(file));
-            assert.strictEqual(cached.files.size, 0);
+            const count = cached.files.size;
+            cached.files[Symbol.iterator] = () => assert.fail('A known file can be deleted directly.');
+            assert.ok(scanner.removePath(vscode.Uri.joinPath(folder.uri, 'ignored', 'file.txt')));
+            assert.strictEqual(cached.files.size, count - 1);
         } finally {
             scanner.dispose();
         }
     });
 
-    test('falls back when the symlink time budget expires at the root', async () => {
+    test('finishes a slow scan, reports progress, and reuses the result', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
-        const scanner = new WorkspaceScanner(async () => assert.fail('Budget exhaustion must skip VS Code search.'));
+        const scanner = new WorkspaceScanner();
         const descriptor = Object.getOwnPropertyDescriptor(performance, 'now');
         let time = 0;
-        Object.defineProperty(performance, 'now', { configurable: true, value: () => time += 300 });
+        Object.defineProperty(performance, 'now', { configurable: true, value: () => time += 500 });
         try {
-            const scan = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(scan.fallback, 'Symlink check did not finish');
+            const messages: string[] = [];
+            const scan = await scanner.getFilesInFolder(folder, message => messages.push(message));
+            assert.ok(messages.some(message => message.includes('folders')));
+            assert.strictEqual(scan.fallback, undefined);
             assert.ok(scan.files.has('ignored/file.txt'));
+            assert.strictEqual(await scanner.getFilesInFolder(folder, () => assert.fail('Unexpected repeat scan')), scan);
         } finally {
             if (descriptor) Object.defineProperty(performance, 'now', descriptor);
             else Reflect.deleteProperty(performance, 'now');
@@ -108,9 +109,7 @@ suite('WorkspaceScanner Test Suite', () => {
         const target = vscode.Uri.joinPath(folder.uri, 'ignored');
         const loop = vscode.Uri.joinPath(target, 'loop');
         const type = process.platform === 'win32' ? 'junction' : 'dir';
-        const scanner = new WorkspaceScanner(async () => {
-            assert.fail('A workspace with a symlink loop must use the no-follow scan.');
-        });
+        const scanner = new WorkspaceScanner();
         try {
             await symlink(target.fsPath, alias.fsPath, type);
             await symlink(folder.uri.fsPath, loop.fsPath, type);
@@ -134,8 +133,7 @@ suite('WorkspaceScanner Test Suite', () => {
     });
 
     test('cancels a shared scan and discards its late results', async () => {
-        const folder = vscode.workspace.workspaceFolders?.[0];
-        assert.ok(folder);
+        const folder = { uri: vscode.Uri.parse('virtual:/test'), name: 'test', index: 0 };
         const file = vscode.Uri.joinPath(folder.uri, 'late.txt');
         let searches = 0;
         let token: vscode.CancellationToken | undefined;
@@ -175,22 +173,32 @@ suite('WorkspaceScanner Test Suite', () => {
         }
     });
 
-    test('keeps using VS Code search when a small directory link is safe', async () => {
+    test('counts both names of a file under a safe directory link', async () => {
         const folder = vscode.workspace.workspaceFolders?.[0];
         assert.ok(folder);
         const alias = vscode.Uri.joinPath(folder.uri, 'small-alias');
         const target = vscode.Uri.joinPath(folder.uri, 'ignored');
-        let searches = 0;
-        const scanner = new WorkspaceScanner(async () => {
-            searches++;
-            return [vscode.Uri.joinPath(alias, 'file.txt')];
-        });
+        const scanner = new WorkspaceScanner();
         try {
             await symlink(target.fsPath, alias.fsPath, process.platform === 'win32' ? 'junction' : 'dir');
             const result = await scanner.getFilesInFolder(folder);
-            assert.strictEqual(searches, 1);
+            assert.ok(result.files.has('ignored/file.txt'));
             assert.strictEqual(result.fallback, undefined);
             assert.ok(result.files.has('small-alias/file.txt'));
+
+            const created = vscode.Uri.joinPath(target, 'through-alias.txt');
+            await writeFile(created.fsPath, '');
+            try {
+                await scanner.addPath(created);
+                const updated = await scanner.getFilesInFolder(folder);
+                assert.strictEqual(updated, result);
+                assert.ok(updated.files.has('ignored/through-alias.txt'));
+                assert.ok(updated.files.has('small-alias/through-alias.txt'));
+            } finally {
+                await unlink(created.fsPath);
+            }
+            scanner.removePath(created);
+            assert.ok(!result.files.has('small-alias/through-alias.txt'));
         } finally {
             scanner.dispose();
             await unlink(alias.fsPath).catch(error => {
@@ -199,16 +207,64 @@ suite('WorkspaceScanner Test Suite', () => {
         }
     });
 
-    test('skips a linked tree that exceeds the pre-scan entry budget', async function () {
+    test('checks a moved directory for loops and restores safe links when the loop goes away', async () => {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder);
+        const type = process.platform === 'win32' ? 'junction' : 'dir';
+        const alias = vscode.Uri.joinPath(folder.uri, 'safe-alias');
+        const target = vscode.Uri.joinPath(folder.uri, 'ignored');
+        const incoming = vscode.Uri.joinPath(folder.uri, 'incoming');
+        const loop = vscode.Uri.joinPath(incoming, 'loop');
+        const unreported = vscode.Uri.joinPath(target, 'unreported.txt');
+        const staging = await mkdtemp(path.join(path.dirname(folder.uri.fsPath), 'incoming-'));
+        const scanner = new WorkspaceScanner();
+        try {
+            await symlink(target.fsPath, alias.fsPath, type);
+            await scanner.getFilesInFolder(folder);
+            // No watcher event for this file yet. Its directory should not be read again.
+            await writeFile(unreported.fsPath, '');
+            await writeFile(path.join(staging, 'new.txt'), '');
+            await symlink(folder.uri.fsPath, path.join(staging, 'loop'), type);
+            await rename(staging, incoming.fsPath);
+
+            await scanner.addPath(incoming);
+            const unsafe = await scanner.getFilesInFolder(folder);
+            assert.strictEqual(unsafe.fallback, 'Symlink loop');
+            assert.ok(unsafe.files.has('incoming/new.txt'));
+            assert.ok(!unsafe.files.has('safe-alias/file.txt'));
+            assert.ok(!unsafe.files.has('ignored/unreported.txt'));
+
+            await unlink(loop.fsPath);
+            scanner.removePath(loop);
+            const safe = await scanner.getFilesInFolder(folder);
+            assert.strictEqual(safe.fallback, undefined);
+            assert.deepStrictEqual(safe.warnings, []);
+            assert.ok(safe.files.has('safe-alias/file.txt'));
+            await scanner.addPath(unreported);
+            assert.ok((await scanner.getFilesInFolder(folder)).files.has('safe-alias/unreported.txt'));
+        } finally {
+            scanner.dispose();
+            const ifPresent = (error: NodeJS.ErrnoException) => {
+                if (error.code !== 'ENOENT') throw error;
+            };
+            await unlink(alias.fsPath).catch(ifPresent);
+            await unlink(unreported.fsPath).catch(ifPresent);
+            for (const dir of [incoming.fsPath, staging]) {
+                await unlink(path.join(dir, 'loop')).catch(ifPresent);
+                await unlink(path.join(dir, 'new.txt')).catch(ifPresent);
+                await rmdir(dir).catch(ifPresent);
+            }
+        }
+    });
+
+    test('counts a large linked tree to completion', async function () {
         this.timeout(10000);
         const parent = await realpath(tmpdir());
         const root = await mkdtemp(path.join(parent, 'ignorelens-link-budget-'));
         const workspace = path.join(root, 'workspace');
         const archive = path.join(root, 'archive');
         const source = path.join(root, 'source');
-        const scanner = new WorkspaceScanner(async () => {
-            assert.fail('A large linked tree must use the no-follow scan.');
-        });
+        const scanner = new WorkspaceScanner();
         try {
             for (const directory of [workspace, archive, source]) await mkdir(directory);
             await writeFile(path.join(workspace, 'ordinary.txt'), '');
@@ -218,9 +274,10 @@ suite('WorkspaceScanner Test Suite', () => {
             await symlink(archive, path.join(workspace, 'linked'), linkType);
 
             const result = await scanner.getFilesInFolder({ uri: vscode.Uri.file(workspace), name: 'workspace', index: 0 });
-            assert.strictEqual(result.fallback, 'Linked directory exceeded the pre-scan size budget');
-            assert.deepStrictEqual(Array.from(result.files), ['ordinary.txt']);
-            assert.ok(result.warnings.some(warning => warning.path === 'linked'));
+            assert.strictEqual(result.fallback, undefined);
+            assert.deepStrictEqual(result.warnings, []);
+            assert.strictEqual(result.files.size, 33 * 256 + 1);
+            assert.ok(result.files.has('linked/alias-32/255'));
         } finally {
             scanner.dispose();
             const resolved = await realpath(root);

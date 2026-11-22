@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor && isSupportedIgnoreFile(editor.document)) {
-            decorationProvider?.triggerUpdateDecorations(editor, false, 'editor switch', true);
+            decorationProvider?.triggerUpdateDecorations(editor, false, 'editor switch');
         }
     }));
     context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(editors => {
@@ -83,13 +83,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const deleteDisposable = fileWatcher.onDidDelete(uri => {
         if (workspaceScanner?.removePath(uri)) {
-            refreshVisibleEditors('file deleted', uri);
+            refreshVisibleEditors('file deleted', uri, true);
         } else {
             refreshGcloudIncludes(uri);
         }
     });
     context.subscriptions.push(deleteDisposable);
-    context.subscriptions.push(fileWatcher.onDidChange(refreshGcloudIncludes));
+    context.subscriptions.push(fileWatcher.onDidChange(uri => {
+        refreshGcloudIncludes(uri);
+        void workspaceScanner?.addPath(uri, true).then(changed => {
+            if (changed) refreshVisibleEditors('link changed', uri, true);
+        }, error => log('Failed to check changed path: ' + String(error)));
+    }));
 
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
         refreshVisibleEditors('workspace folders changed');

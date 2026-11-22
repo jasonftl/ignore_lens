@@ -13,12 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Apply `.gcloudignore` include directives in order and refresh their counts when the included file changes (ISSUE-M045).
 
 ### Changed
+- Scan each workspace folder the first time an ignore file is opened and show progress until the scan finishes. Reuse the result across tabs, and check new files, directories, and links as VS Code reports them.
+- Count large, safe linked directories in full. A loop still produces a warning and skips linked targets.
 - Update runtime and development dependencies.
 
 ### Fixed
 - Check symlinks when link following is enabled, and warn when targets are skipped.
-- Cancel scans when leaving ignore files, changing workspace folders, or disabling Ignore Lens.
-- Start a fresh scan when returning to an ignore-file tab, with previous counts visible while the scan runs.
+- Cancel a scan when its workspace folder is removed or Ignore Lens is disabled.
 - Release cached gitignore match results after each batch of files.
 - Apply Git's parent-directory rules, match its bracket case-folding behaviour, and preserve escaped trailing spaces (ISSUE-H004, ISSUE-M026, ISSUE-M027, ISSUE-M028, ISSUE-M029).
 - Apply the matching rules for Perforce, VS Code packaging, Docker, and CVS (ISSUE-M035, ISSUE-M036, ISSUE-M037, ISSUE-M039, ISSUE-M042).
@@ -26,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve spaces when normalising Bazel's literal directory paths, and warn about invalid Helm ignore patterns (ISSUE-M040, ISSUE-M041).
 - Count paths excluded by Helm's `!` rules without restoring earlier exclusions (ISSUE-M044).
 - Refresh visible ignore editors after file and setting changes, preserve newer file events, and keep cached warnings in sync (ISSUE-M030, ISSUE-M031, ISSUE-M032, ISSUE-M034, ISSUE-L026).
-- Bound symlink pre-scans, avoid walking cached paths and pending creates for known-file deletions, and show scan errors and stale counts with the correct output and theme settings (ISSUE-M033, ISSUE-M043, ISSUE-L025, ISSUE-L027).
+- Count files and check links in the same scan, avoid walking cached paths and pending creates for known-file deletions, and show scan errors and stale counts with the correct output and theme settings (ISSUE-M033, ISSUE-M043, ISSUE-L025, ISSUE-L027).
 - Keep release packaging rules with the source, and isolate each extension test run (ISSUE-L028, ISSUE-L029).
 - Repair broken README links and update moved documentation links.
 

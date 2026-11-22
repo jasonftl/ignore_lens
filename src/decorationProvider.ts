@@ -4,7 +4,8 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import * as path from 'path';
-import { ScanWarning, WorkspaceScanner } from './workspaceScanner';
+import { ScanWarning } from './workspaceTree';
+import { WorkspaceScanner } from './workspaceScanner';
 import { AdvancedCountResult, DecorationStyle, IgnoreFileType, ParsedLine } from './types';
 import { log, logTiming } from './logger';
 import { getParser, ILineParser, isGcloudIncludeName, parseFile } from './parserStrategy';
@@ -27,7 +28,6 @@ interface LineCollectionResult {
 
 interface EditorUpdate {
     timeout?: NodeJS.Timeout;
-    fresh: boolean;
     scanning?: boolean;
 }
 
@@ -220,9 +220,9 @@ export class DecorationProvider implements vscode.Disposable {
      *
      * @param editor - The text editor to update decorations for
      */
-    public async updateDecorations(editor: vscode.TextEditor, fresh = false): Promise<void> {
+    public async updateDecorations(editor: vscode.TextEditor): Promise<void> {
         this.cancelEditorUpdate(editor);
-        const update: EditorUpdate = { fresh };
+        const update: EditorUpdate = {};
         this.updates.set(editor, update);
         const isCurrent = () => this.updates.get(editor) === update;
 
@@ -297,9 +297,7 @@ export class DecorationProvider implements vscode.Disposable {
         this.showScanStatus(editor, cachedDecorations?.warnings ?? [], 'Scanning...');
         let previousProgress = 'Scanning...';
         let nextProgress = performance.now() + 1000 / 3;
-        const fresh = update.fresh;
-        update.fresh = false;
-        const scan = await this.workspaceScanner.getFilesInFolder(workspaceFolder, fresh, message => {
+        const scan = await this.workspaceScanner.getFilesInFolder(workspaceFolder, message => {
             if (isCurrent() && message !== previousProgress && performance.now() >= nextProgress) {
                 this.showScanStatus(editor, cachedDecorations?.warnings ?? [], message);
                 previousProgress = message;
@@ -812,18 +810,16 @@ export class DecorationProvider implements vscode.Disposable {
      * @param throttle - Whether to debounce the update
      * @param reason - Optional reason for the update (for logging)
      */
-    public triggerUpdateDecorations(editor: vscode.TextEditor, throttle: boolean = false, reason?: string, fresh = false): void {
-        const pending = this.updates.get(editor);
-        const needsFresh = fresh || !!pending?.fresh;
+    public triggerUpdateDecorations(editor: vscode.TextEditor, throttle: boolean = false, reason?: string): void {
         this.cancelEditorUpdate(editor);
 
         const run = () => {
             if (reason) log('Decoration update triggered by: ' + reason);
-            void this.updateDecorations(editor, needsFresh);
+            void this.updateDecorations(editor);
         };
         if (throttle) {
             const debounceMs = vscode.workspace.getConfiguration('ignorelens').get<number>('scanDebounceMs', 500);
-            const update = { fresh: needsFresh, timeout: setTimeout(run, debounceMs) };
+            const update = { timeout: setTimeout(run, debounceMs) };
             this.updates.set(editor, update);
         } else {
             run();
@@ -843,12 +839,11 @@ export class DecorationProvider implements vscode.Disposable {
         for (const editor of this.updates.keys()) {
             if (!visible.has(editor)) this.cancelEditorUpdate(editor);
         }
-        const folders = editors.flatMap(editor => vscode.workspace.getWorkspaceFolder(editor.document.uri) ?? []);
-        this.workspaceScanner.cancelScans(folders);
     }
 
     public cancelUpdate(): void {
         this.retainEditors([]);
+        this.workspaceScanner.cancelScans();
     }
 
 
